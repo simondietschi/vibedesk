@@ -95,7 +95,7 @@ def build_portable(output_folder: str, target: str):
     finally:
         os.chdir(current_dir)
 
-# Linux: python3 generate.py -f ../rustdesk-portable-packer/test -o . -e ./test/main.py
+# Linux: python3 generate.py -f ../vibedesk-portable-packer/test -o . -e ./test/main.py
 # Windows: python3 .\generate.py -f ..\rustdesk\flutter\build\windows\runner\Debug\ -o . -e ..\rustdesk\flutter\build\windows\runner\Debug\rustdesk.exe
 
 

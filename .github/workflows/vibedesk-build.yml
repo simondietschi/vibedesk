@@ -205,14 +205,14 @@ jobs:
         run: |
           deb=$(ls vibedesk-*.deb | head -n 1)
           dpkg-deb -c "$deb" | awk '{print $6}' > files.txt
-          for f in ./usr/share/vibedesk/vibedesk ./usr/share/vibedesk/lib/librustdesk.so \
+          for f in ./usr/share/vibedesk/vibedesk ./usr/share/vibedesk/lib/libvibedesk.so \
                    ./usr/share/vibedesk/files/systemd/vibedesk.service \
                    ./usr/share/applications/vibedesk.desktop ./usr/share/icons/hicolor/256x256/apps/vibedesk.png; do
             grep -qx "$f" files.txt || { echo "fehlt im Paket: $f"; exit 1; }
           done
           dpkg-deb -f "$deb" Package | grep -qx vibedesk
           if [ -n "$VIBEDESK_RENDEZVOUS_SERVER" ]; then
-            grep -q --fixed-strings "$VIBEDESK_RENDEZVOUS_SERVER" target/release/liblibrustdesk.so \
+            grep -q --fixed-strings "$VIBEDESK_RENDEZVOUS_SERVER" target/release/liblibvibedesk.so \
               || { echo "Server ist nicht im Binary eingebaut"; exit 1; }
           fi
           rm files.txt
@@ -324,7 +324,7 @@ jobs:
           python3 ./generate.py -f ../../vibedesk/ -o . -e ../../vibedesk/vibedesk.exe
           popd
           mkdir -p ./dist
-          mv ./target/release/rustdesk-portable-packer.exe "./dist/vibedesk-${version}-x86_64.exe"
+          mv ./target/release/vibedesk-portable-packer.exe "./dist/vibedesk-${version}-x86_64.exe"
 
       - uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
         with:
@@ -444,7 +444,7 @@ jobs:
           cargo install cargo-ndk --version "$CARGO_NDK_VERSION" --locked
           "./flutter/$SCRIPT"
           mkdir -p "jni/$ABI"
-          cp "./target/$TARGET/release/liblibrustdesk.so" "jni/$ABI/librustdesk.so"
+          cp "./target/$TARGET/release/liblibvibedesk.so" "jni/$ABI/libvibedesk.so"
           cp "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$(echo "$TARGET" | sed 's/armv7-linux-androideabi/arm-linux-androideabi/')/libc++_shared.so" "jni/$ABI/"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

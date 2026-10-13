@@ -833,10 +833,10 @@ class UpdateMe: Reactor.Component {
     }
 
     event click $(#install-me) {
-        handler.open_url("https://rustdesk.com/download");
+        handler.open_url("https://github.com/simondietschi/vibedesk/releases");
         return;
         if (!is_win) {
-            handler.open_url("https://rustdesk.com");
+            handler.open_url("https://github.com/simondietschi/vibedesk");
             return;
         }
         var url = software_update_url + '.' + handler.get_software_ext();

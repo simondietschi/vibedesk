@@ -1,5 +1,5 @@
 [package]
-name = "rustdesk-portable-packer"
+name = "vibedesk-portable-packer"
 version = "1.5.1"
 edition = "2021"
 description = "VibeDesk Remote Desktop"

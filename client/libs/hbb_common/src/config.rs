@@ -54,7 +54,7 @@ const SERIAL: i32 = 3;
 
 #[cfg(target_os = "macos")]
 lazy_static::lazy_static! {
-    pub static ref ORG: RwLock<String> = RwLock::new("com.carriez".to_owned());
+    pub static ref ORG: RwLock<String> = RwLock::new("io.github.simondietschi".to_owned());
 }
 
 type Size = (i32, i32, i32, i32);

@@ -2,12 +2,12 @@ on run {user, cur_pid, source_path, expected_sha256}
 
   -- RustDesk identifiers in this script are templates. correct_app_name()
   -- rewrites them for the installed client before osascript executes it.
-  set agent_plist to "/Library/LaunchAgents/com.carriez.RustDesk_server.plist"
-  set daemon_plist to "/Library/LaunchDaemons/com.carriez.RustDesk_service.plist"
+  set agent_plist to "/Library/LaunchAgents/io.github.simondietschi.RustDesk_server.plist"
+  set daemon_plist to "/Library/LaunchDaemons/io.github.simondietschi.RustDesk_service.plist"
   set app_bundle to "/Applications/RustDesk.app"
   set installed_info_q to quoted form of (app_bundle & "/Contents/Info.plist")
   set service_executable to app_bundle & "/Contents/MacOS/service"
-  set daemon_label to "com.carriez.RustDesk_service"
+  set daemon_label to "io.github.simondietschi.RustDesk_service"
   set daemon_socket to "/tmp/RustDesk-service/ipc_service"
   set readiness_attempts to "30"
   set write_plist_attempts to "60"

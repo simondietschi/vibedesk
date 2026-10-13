@@ -1,15 +1,15 @@
 [package]
-name = "rustdesk"
+name = "vibedesk"
 version = "1.5.1"
 authors = ["rustdesk <info@rustdesk.com>"]
 edition = "2021"
 build= "build.rs"
 description = "VibeDesk Remote Desktop"
-default-run = "rustdesk"
+default-run = "vibedesk"
 rust-version = "1.75"
 
 [lib]
-name = "librustdesk"
+name = "libvibedesk"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [[bin]]
@@ -276,8 +276,8 @@ docopt = "1.1"
 tokio = { version = "1.44", features = ["test-util"] }
 
 [package.metadata.bundle]
-name = "RustDesk"
-identifier = "com.carriez.rustdesk"
+name = "VibeDesk"
+identifier = "io.github.simondietschi.vibedesk"
 icon = ["res/32x32.png", "res/128x128.png", "res/128x128@2x.png"]
 osx_minimum_system_version = "10.14"
 
