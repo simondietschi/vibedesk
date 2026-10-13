@@ -79,6 +79,8 @@ deinem Server fest eingebaut:
 | Linux x86_64 | `vibedesk-<version>-x86_64.deb` |
 | Windows x64 | `vibedesk-<version>-x86_64.exe` (selbstentpackend) und `.msi` |
 | Android | `vibedesk-<version>-universal.apk` (arm64, arm, x86_64) |
+| macOS | `vibedesk-<version>-x86_64.dmg` (Intel) und `-aarch64.dmg` (Apple Silicon) |
+| iOS | `vibedesk-<version>-unsigned.ipa` |
 
 Server und Schlüssel einmalig als Repository-Variablen hinterlegen
 (GitHub: Settings, Secrets and variables, Actions, Variables):
@@ -89,10 +91,24 @@ Server und Schlüssel einmalig als Repository-Variablen hinterlegen
 Starten lässt sich der Build unter Actions, «VibeDesk Build», «Run workflow».
 Dort kann man Server und Schlüssel für einen einzelnen Lauf auch direkt
 eingeben. Die Pakete liegen danach als Artefakte beim Lauf. Ein Git-Tag `v*`
-(z.B. `v1.5.1`) baut alle Plattformen und veröffentlicht ein Release.
+(z.B. `v1.5.1`) baut alle Plattformen und legt einen Release-Entwurf mit
+Prüfsummen (`SHA256SUMS`) an. Öffentlich wird er erst, wenn man ihn unter
+Releases veröffentlicht.
+
+Das Windows-Paket enthält wie upstream den Treiber für virtuelle Bildschirme,
+den Druckertreiber für «Drucken auf entferntem Drucker» und das
+Hilfsprogramm für den Privatsphäre-Modus. Die Treiber werden aus den
+Upstream-Releases geladen und gegen feste Prüfsummen geprüft. Sie sind von
+RustDesk signiert und tragen deshalb intern deren Namen.
 
 Der öffentliche Schlüssel ist kein Geheimnis, er darf als normale Variable
 gespeichert werden.
+
+macOS-Apps sind nur ad-hoc signiert. Beim ersten Start muss man sie deshalb
+per Rechtsklick, «Öffnen» freigeben. Für eine Signatur mit Apple-Zertifikat
+trägt man in Xcode unter Signing die eigene Team-ID ein. Die iOS-App ist
+unsigniert und muss vor der Installation mit einem eigenen Apple-Konto
+signiert werden (z.B. mit Xcode oder AltStore).
 
 Die Android-APK wird ohne weitere Einstellungen mit einem Debug-Schlüssel
 signiert und lässt sich so installieren. Für Updates über einen eigenen

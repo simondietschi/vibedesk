@@ -5,7 +5,7 @@ name: VibeDesk Build
 # Server und Schlüssel kommen aus den Eingaben beim manuellen Start oder,
 # falls leer, aus den Repository-Variablen VIBEDESK_RENDEZVOUS_SERVER und
 # VIBEDESK_RS_PUB_KEY (Settings > Secrets and variables > Actions > Variables).
-# Ein Tag v* baut alle Plattformen und hängt die Pakete an ein Release.
+# Ein Tag v* baut alle Plattformen und legt einen Release-Entwurf an.
 
 on:
   workflow_dispatch:
@@ -30,6 +30,14 @@ on:
         description: "Android (apk) bauen"
         type: boolean
         default: true
+      macos:
+        description: "macOS (dmg) bauen"
+        type: boolean
+        default: true
+      ios:
+        description: "iOS (unsignierte ipa) bauen"
+        type: boolean
+        default: true
   push:
     tags:
       - "v*"
@@ -39,6 +47,7 @@ permissions:
 
 env:
   RUST_VERSION: "1.75"
+  MAC_RUST_VERSION: "1.81"
   FLUTTER_VERSION: "3.24.5"
   BRIDGE_FLUTTER_VERSION: "3.22.3"
   FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"
@@ -223,9 +232,29 @@ jobs:
           path: client/vibedesk-*.deb
           if-no-files-found: error
 
+  topmost:
+    name: Windows-Hilfsprogramm TopMostWindow
+    if: github.event_name == 'push' || inputs.windows
+    runs-on: windows-2022
+    steps:
+      - uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
+
+      - name: Quellcode holen und bauen
+        run: |
+          git clone https://github.com/rustdesk-org/RustDeskTempTopMostWindow topmost
+          cd topmost
+          git checkout ecd8d6a139eee76845ea66423fb739af450fda90
+          msbuild WindowInjection/WindowInjection.vcxproj -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: topmost-x64
+          path: topmost/WindowInjection/x64/Release/WindowInjection.dll
+          if-no-files-found: error
+
   windows:
     name: Windows x64
-    needs: bridge
+    needs: [bridge, topmost]
     if: github.event_name == 'push' || inputs.windows
     runs-on: windows-2022
     defaults:
@@ -307,6 +336,37 @@ jobs:
           $out = (& ".\vibedesk\vibedesk.exe" --version | Out-String).Trim()
           Write-Host "vibedesk --version: $out"
           if (-not $out) { throw "vibedesk.exe --version lieferte nichts" }
+
+      - name: Treiber hinzufügen
+        shell: bash
+        run: |
+          set -euo pipefail
+          fetch() {
+            curl -sSL --fail -o "$2" "$1"
+            echo "$3  $2" | sha256sum -c -
+          }
+          # Treiber für virtuelle Bildschirme
+          fetch https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip usbmmidd_v2.zip \
+            629b51e9944762bae73948171c65d09a79595cf4c771a82ebc003fbba5b24f51
+          unzip -q usbmmidd_v2.zip
+          rm -rf usbmmidd_v2/Win32 usbmmidd_v2/deviceinstaller64.exe usbmmidd_v2/deviceinstaller.exe usbmmidd_v2/usbmmidd.bat
+          mv usbmmidd_v2 ./vibedesk/
+          # Treiber für den entfernten Drucker
+          base=https://github.com/rustdesk/hbb_common/releases/download/driver
+          fetch "$base/rustdesk_printer_driver_v4-1.4.zip" printer_driver.zip \
+            c4cf4d3b48c4d9079b243edc43bb1db03b076282bc259c9f49883e9db20fa8b5
+          fetch "$base/printer_driver_adapter.zip" printer_driver_adapter.zip \
+            e90e5d52c8807b4c6293c78a52479338715e0bf396b1b34802777b8c452e6781
+          unzip -q printer_driver.zip
+          mkdir -p ./vibedesk/drivers
+          mv rustdesk_printer_driver_v4-1.4 ./vibedesk/drivers/RustDeskPrinterDriver
+          unzip -q printer_driver_adapter.zip -d ./vibedesk/
+          rm -f usbmmidd_v2.zip printer_driver.zip printer_driver_adapter.zip
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: topmost-x64
+          path: client/vibedesk
 
       - name: Ressourcen für den Portable-Packer übernehmen
         shell: bash
@@ -536,9 +596,226 @@ jobs:
           path: client/dist/*.apk
           if-no-files-found: error
 
+  macos:
+    name: macOS ${{ matrix.arch }}
+    needs: bridge
+    if: github.event_name == 'push' || inputs.macos
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, os: macos-15-intel, target: x86_64-apple-darwin, build-args: "", min-macos: "" }
+          - { arch: aarch64, os: macos-14, target: aarch64-apple-darwin, build-args: "--screencapturekit", min-macos: "12.3" }
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Cache-Variablen für vcpkg freigeben
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Build-Werkzeuge installieren
+        run: |
+          brew install llvm create-dmg
+          command -v pkg-config >/dev/null || brew install pkg-config
+          curl -sSLo nasm.zip https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip
+          unzip -q nasm.zip
+          sudo cp nasm-2.16.03/nasm /usr/local/bin/nasm
+          rm -rf nasm.zip nasm-2.16.03
+          nasm --version
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Flutter patchen
+        shell: bash
+        run: |
+          patch="$GITHUB_WORKSPACE/client/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+          cd "$(dirname "$(dirname "$(which flutter)")")"
+          # Der Flutter-Cache kann den Patch schon enthalten.
+          if git apply --reverse --check "$patch" 2>/dev/null; then
+            echo "Patch ist bereits angewendet"
+          else
+            git apply "$patch"
+          fi
+
+      - name: Flutter-Workaround für hängende Frames
+        shell: bash
+        run: |
+          cd "$(dirname "$(which flutter)")"
+          sed -i -e 's/_setFramesEnabledState(false);/\/\/_setFramesEnabledState(false);/g' ../packages/flutter/lib/src/scheduler/binding.dart
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ env.MAC_RUST_VERSION }}
+          targets: ${{ matrix.target }}
+          components: "rustfmt"
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: ${{ matrix.os }}
+          workspaces: client
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bridge
+          path: client
+
+      - uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: vcpkg-Abhängigkeiten installieren
+        shell: bash
+        run: |
+          if ! "$VCPKG_ROOT/vcpkg" install --x-install-root="$VCPKG_ROOT/installed"; then
+            find "$VCPKG_ROOT/" -name "*.log" -exec sh -c 'echo "== $1"; tail -n 50 "$1"' _ {} \;
+            exit 1
+          fi
+
+      - name: Client bauen
+        env:
+          MIN_MACOS: ${{ matrix.min-macos }}
+          BUILD_ARGS: ${{ matrix.build-args }}
+        run: |
+          if [ -n "$MIN_MACOS" ]; then
+            sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS}/" build.py
+            sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS}'/" flutter/macos/Podfile
+            sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS}\"/" Cargo.toml
+            sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS};/" flutter/macos/Runner.xcodeproj/project.pbxproj
+            export MACOSX_DEPLOYMENT_TARGET="$MIN_MACOS"
+          fi
+          ./build.py --flutter --hwcodec --unix-file-copy-paste $BUILD_ARGS
+
+      - name: App prüfen
+        run: |
+          app=./flutter/build/macos/Build/Products/Release/VibeDesk.app
+          test -x "$app/Contents/MacOS/VibeDesk"
+          test -f "$app/Contents/Frameworks/liblibvibedesk.dylib" || find "$app" -name "*vibedesk*.dylib" | grep -q .
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Contents/Info.plist" | grep -qx io.github.simondietschi.vibedesk
+
+      - name: dmg erstellen
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          create_dmg="$(readlink -f "$(command -v create-dmg)")"
+          sed -i -e 's/MAXIMUM_UNMOUNTING_ATTEMPTS=3/MAXIMUM_UNMOUNTING_ATTEMPTS=7/' "$create_dmg"
+          mkdir -p dist
+          create-dmg --volname "VibeDesk" --icon "VibeDesk.app" 200 190 --hide-extension "VibeDesk.app" \
+            --window-size 800 400 --app-drop-link 600 185 \
+            "dist/vibedesk-${version}-${ARCH}.dmg" ./flutter/build/macos/Build/Products/Release/VibeDesk.app
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vibedesk-macos-${{ matrix.arch }}
+          path: client/dist/*.dmg
+          if-no-files-found: error
+
+  ios:
+    name: iOS
+    needs: bridge
+    if: github.event_name == 'push' || inputs.ios
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Cache-Variablen für vcpkg freigeben
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Build-Werkzeuge installieren
+        run: brew install nasm yasm
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Flutter patchen
+        shell: bash
+        run: |
+          patch="$GITHUB_WORKSPACE/client/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+          cd "$(dirname "$(dirname "$(which flutter)")")"
+          # Der Flutter-Cache kann den Patch schon enthalten.
+          if git apply --reverse --check "$patch" 2>/dev/null; then
+            echo "Patch ist bereits angewendet"
+          else
+            git apply "$patch"
+          fi
+
+      - uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: vcpkg-Abhängigkeiten installieren
+        shell: bash
+        run: |
+          if ! "$VCPKG_ROOT/vcpkg" install --triplet arm64-ios --x-install-root="$VCPKG_ROOT/installed"; then
+            find "$VCPKG_ROOT/" -name "*.log" -exec sh -c 'echo "== $1"; tail -n 50 "$1"' _ {} \;
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: aarch64-apple-ios
+          components: "rustfmt"
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: ios
+          workspaces: client
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bridge
+          path: client
+
+      - name: Rust-Bibliothek bauen
+        run: cargo build --locked --features flutter,hwcodec --release --target aarch64-apple-ios --lib
+
+      - name: App bauen (ohne Signatur)
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          pushd flutter
+          flutter build ipa --release --no-codesign
+          popd
+          app=flutter/build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Info.plist" | grep -qx io.github.simondietschi.vibedesk
+          mkdir -p dist/Payload
+          cp -R "$app" dist/Payload/
+          (cd dist && zip -qry "vibedesk-${version}-unsigned.ipa" Payload && rm -rf Payload)
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vibedesk-ios
+          path: client/dist/*.ipa
+          if-no-files-found: error
+
   release:
-    name: Release veröffentlichen
-    needs: [linux, windows, android]
+    name: Release-Entwurf erstellen
+    needs: [linux, windows, android, macos, ios]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     permissions:
@@ -550,6 +827,12 @@ jobs:
           merge-multiple: true
           path: dist
 
+      - name: Prüfsummen erstellen
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      # Als Entwurf, damit ein Release erst nach Durchsicht öffentlich wird.
       - uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
+          draft: true
+          name: VibeDesk ${{ github.ref_name }}
           files: dist/*

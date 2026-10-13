@@ -5,11 +5,11 @@
  <key>method</key>
  <string>app-store</string>
  <key>teamID</key>
- <string>HZF9JMC8YN</string>
+ <string>YOUR_TEAM_ID</string>
  <key>provisioningProfiles</key>
  <dict>
  <key>io.github.simondietschi.vibedesk</key>
- <string>rustdesk-ios-prod-app-store</string>
+ <string>vibedesk-ios-app-store</string>
  </dict>
  </dict>
  </plist>
