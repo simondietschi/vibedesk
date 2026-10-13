@@ -5,7 +5,7 @@ name: VibeDesk Build
 # Server und Schlüssel kommen aus den Eingaben beim manuellen Start oder,
 # falls leer, aus den Repository-Variablen VIBEDESK_RENDEZVOUS_SERVER und
 # VIBEDESK_RS_PUB_KEY (Settings > Secrets and variables > Actions > Variables).
-# Ein Tag v* baut alle Plattformen und legt einen Release-Entwurf an.
+# Ein Tag v* oder die Eingabe release_tag legt zusätzlich einen Release-Entwurf an.
 
 on:
   workflow_dispatch:
@@ -16,6 +16,10 @@ on:
         default: ""
       rs_pub_key:
         description: "Inhalt von id_ed25519.pub des Servers"
+        type: string
+        default: ""
+      release_tag:
+        description: "Optional: Release-Entwurf mit diesem Tag anlegen, z.B. v1.5.1"
         type: string
         default: ""
       linux:
@@ -819,7 +823,10 @@ jobs:
   release:
     name: Release-Entwurf erstellen
     needs: [linux, windows, android, macos, ios]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # Läuft auch, wenn einzelne Plattformen abgewählt wurden, aber nie nach einem Fehler.
+    if: >-
+      !cancelled() && !failure() &&
+      ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '')
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -837,5 +844,7 @@ jobs:
       - uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           draft: true
-          name: VibeDesk ${{ github.ref_name }}
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: VibeDesk ${{ inputs.release_tag || github.ref_name }}
           files: dist/*

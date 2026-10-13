@@ -91,9 +91,10 @@ Server und Schlüssel einmalig als Repository-Variablen hinterlegen
 Starten lässt sich der Build unter Actions, «VibeDesk Build», «Run workflow».
 Dort kann man Server und Schlüssel für einen einzelnen Lauf auch direkt
 eingeben. Die Pakete liegen danach als Artefakte beim Lauf. Ein Git-Tag `v*`
-(z.B. `v1.5.1`) baut alle Plattformen und legt einen Release-Entwurf mit
-Prüfsummen (`SHA256SUMS`) an. Öffentlich wird er erst, wenn man ihn unter
-Releases veröffentlicht.
+(z.B. `v1.5.1`) oder das Feld «Release-Tag» beim manuellen Start legt
+zusätzlich einen Release-Entwurf mit Prüfsummen (`SHA256SUMS`) an. Öffentlich
+wird er erst, wenn man ihn unter Releases veröffentlicht. Erst dann erstellt
+GitHub auch den Tag.
 
 Das Windows-Paket enthält wie upstream den Treiber für virtuelle Bildschirme,
 den Druckertreiber für «Drucken auf entferntem Drucker» und das
