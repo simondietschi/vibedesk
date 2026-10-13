@@ -57,6 +57,9 @@ env:
   CARGO_NDK_VERSION: "3.1.2"
   VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  # Git-Abhängigkeiten über GitHub brechen gelegentlich ab, Cargo soll es erneut versuchen.
+  CARGO_NET_RETRY: "10"
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
   VIBEDESK_RENDEZVOUS_SERVER: ${{ inputs.rendezvous_server || vars.VIBEDESK_RENDEZVOUS_SERVER }}
   VIBEDESK_RS_PUB_KEY: ${{ inputs.rs_pub_key || vars.VIBEDESK_RS_PUB_KEY }}
 
