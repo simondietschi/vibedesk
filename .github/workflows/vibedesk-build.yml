@@ -195,6 +195,22 @@ jobs:
           for name in vibedesk-*.deb; do mv "$name" "${name%.deb}-x86_64.deb"; done
           ls -l vibedesk-*.deb
 
+      - name: Paket prüfen
+        run: |
+          deb=$(ls vibedesk-*.deb | head -n 1)
+          dpkg-deb -c "$deb" | awk '{print $6}' > files.txt
+          for f in ./usr/share/vibedesk/vibedesk ./usr/share/vibedesk/lib/librustdesk.so \
+                   ./usr/share/vibedesk/files/systemd/vibedesk.service \
+                   ./usr/share/applications/vibedesk.desktop ./usr/share/icons/hicolor/256x256/apps/vibedesk.png; do
+            grep -qx "$f" files.txt || { echo "fehlt im Paket: $f"; exit 1; }
+          done
+          dpkg-deb -f "$deb" Package | grep -qx vibedesk
+          if [ -n "$VIBEDESK_RENDEZVOUS_SERVER" ]; then
+            grep -q --fixed-strings "$VIBEDESK_RENDEZVOUS_SERVER" target/release/liblibrustdesk.so \
+              || { echo "Server ist nicht im Binary eingebaut"; exit 1; }
+          fi
+          rm files.txt
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vibedesk-linux-x86_64
@@ -274,6 +290,12 @@ jobs:
         run: |
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           mv ./flutter/build/windows/x64/runner/Release ./vibedesk
+
+      - name: Programm prüfen
+        run: |
+          $out = (& ".\vibedesk\vibedesk.exe" --version | Out-String).Trim()
+          Write-Host "vibedesk --version: $out"
+          if (-not $out) { throw "vibedesk.exe --version lieferte nichts" }
 
       - name: Ressourcen für den Portable-Packer übernehmen
         shell: bash
