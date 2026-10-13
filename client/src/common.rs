@@ -3313,6 +3313,17 @@ mod tests {
     }
 
     #[test]
+    fn test_api_server_fallback_has_no_public_default() {
+        assert_eq!(
+            get_api_server_("".to_owned(), "desk.example.ch".to_owned()),
+            "http://desk.example.ch:21114"
+        );
+        if config::RENDEZVOUS_SERVERS[0].is_empty() {
+            assert_eq!(get_api_server_("".to_owned(), "".to_owned()), "");
+        }
+    }
+
+    #[test]
     fn test_is_public_matches_rustdesk_root_domain() {
         assert!(is_public("rustdesk.com/"));
         assert!(is_public("rustdesk.com:21117"));
