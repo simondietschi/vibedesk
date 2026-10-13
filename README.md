@@ -69,6 +69,37 @@ Ohne diese Variablen trägt man Server und Schlüssel im Client unter
 Einstellungen, Netzwerk, ID/Relay-Server ein. Der API-Server wird automatisch
 als `http://<server>:21114` abgeleitet.
 
+## Eigene Builds per GitHub Actions
+
+Der Workflow `.github/workflows/vibedesk-build.yml` baut fertige Clients mit
+deinem Server fest eingebaut:
+
+| Plattform | Ergebnis |
+|-----------|----------|
+| Linux x86_64 | `vibedesk-<version>-x86_64.deb` |
+| Windows x64 | `vibedesk-<version>-x86_64.exe` (selbstentpackend) und `.msi` |
+| Android | `vibedesk-<version>-universal.apk` (arm64, arm, x86_64) |
+
+Server und Schlüssel einmalig als Repository-Variablen hinterlegen
+(GitHub: Settings, Secrets and variables, Actions, Variables):
+
+- `VIBEDESK_RENDEZVOUS_SERVER`, z.B. `desk.example.ch`
+- `VIBEDESK_RS_PUB_KEY`, Inhalt von `id_ed25519.pub` des Servers
+
+Starten lässt sich der Build unter Actions, «VibeDesk Build», «Run workflow».
+Dort kann man Server und Schlüssel für einen einzelnen Lauf auch direkt
+eingeben. Die Pakete liegen danach als Artefakte beim Lauf. Ein Git-Tag `v*`
+(z.B. `v1.5.1`) baut alle Plattformen und veröffentlicht ein Release.
+
+Der öffentliche Schlüssel ist kein Geheimnis, er darf als normale Variable
+gespeichert werden.
+
+Die Android-APK wird ohne weitere Einstellungen mit einem Debug-Schlüssel
+signiert und lässt sich so installieren. Für Updates über einen eigenen
+Schlüssel hinterlegt man diese Secrets: `ANDROID_SIGNING_KEY` (Keystore als
+Base64), `ANDROID_ALIAS`, `ANDROID_KEY_STORE_PASSWORD` und
+`ANDROID_KEY_PASSWORD`.
+
 ## Branding
 
 Die Quelldateien für Logo und Icons liegen in `branding/` (`icon.svg` farbig,
