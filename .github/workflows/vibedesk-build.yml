@@ -377,7 +377,10 @@ jobs:
       - name: Systempakete installieren
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y clang cmake curl git g++ libclang-dev llvm-dev nasm ninja-build pkg-config wget
+          sudo apt-get install -y \
+            clang cmake curl gcc-multilib git g++ g++-multilib libc6-dev libclang-dev llvm-dev \
+            libasound2-dev libgtk-3-dev libpulse-dev libunwind-dev libva-dev libxcb-randr0-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev libxdo-dev libxfixes-dev nasm ninja-build pkg-config wget
 
       - uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1
         id: setup-ndk
