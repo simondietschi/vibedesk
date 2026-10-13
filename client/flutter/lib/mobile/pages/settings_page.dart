@@ -36,7 +36,7 @@ class SettingsPage extends StatefulWidget implements PageShape {
   State<SettingsPage> createState() => _SettingsState();
 }
 
-const url = 'https://rustdesk.com/';
+const url = 'https://github.com/simondietschi/vibedesk';
 
 enum KeepScreenOn {
   never,
@@ -292,11 +292,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     final customClientSection = CustomSettingsSection(
         child: Column(
       children: [
-        if (bind.isCustomClient())
-          Align(
-            alignment: Alignment.center,
-            child: loadPowered(context),
-          ),
         Align(
           alignment: Alignment.center,
           child: loadLogo(),
@@ -1030,7 +1025,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                 title: Text(translate("Version: ") + version),
                 value: Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('rustdesk.com',
+                  child: Text('github.com/simondietschi/vibedesk',
                       style: TextStyle(
                         decoration: TextDecoration.underline,
                       )),
@@ -1063,7 +1058,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
             SettingsTile(
               title: Text(translate("Privacy Statement")),
               onPressed: (context) =>
-                  launchUrlString('https://rustdesk.com/privacy.html'),
+                  launchUrlString('https://github.com/simondietschi/vibedesk#datenschutz'),
               leading: Icon(Icons.privacy_tip),
             )
           ],
@@ -1176,12 +1171,12 @@ void showAbout(OverlayDialogManager dialogManager) {
         Text('Version: $version'),
         InkWell(
             onTap: () async {
-              const url = 'https://rustdesk.com/';
+              const url = 'https://github.com/simondietschi/vibedesk';
               await launchUrl(Uri.parse(url));
             },
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('rustdesk.com',
+              child: Text('github.com/simondietschi/vibedesk',
                   style: TextStyle(
                     decoration: TextDecoration.underline,
                   )),

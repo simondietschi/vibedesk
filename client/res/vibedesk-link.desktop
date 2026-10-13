@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=VibeDesk
+NoDisplay=true
+MimeType=x-scheme-handler/vibedesk;
+TryExec=vibedesk
+Exec=vibedesk %u
+Icon=vibedesk
+Terminal=false
+Type=Application
+StartupNotify=false
+StartupWMClass=vibedesk

@@ -51,7 +51,34 @@ Weitere Optionen: `./target/release/hbbs --help` und `server/README.md`.
 
 Der Client braucht vcpkg (libvpx, libyuv, opus, aom) und für die Oberfläche
 Flutter. Die Anleitung steht in `client/README.md`, die CI-Workflows in
-`client/.github/workflows/` zeigen die genauen Schritte pro Plattform.
+`client/.github/workflows/` zeigen die genauen Schritte pro Plattform. Unter
+Linux geht es auch ohne vcpkg mit den Systembibliotheken
+(`--features linux-pkg-config`).
+
+VibeDesk bringt keinen öffentlichen Server mit. Den eigenen `hbbs` und dessen
+öffentlichen Schlüssel kann man beim Bauen fest einbauen, dann muss im Client
+nichts konfiguriert werden:
+
+```sh
+export VIBEDESK_RENDEZVOUS_SERVER=desk.example.ch
+export VIBEDESK_RS_PUB_KEY="$(cat /pfad/zu/id_ed25519.pub)"
+cargo build --release --features flutter
+```
+
+Ohne diese Variablen trägt man Server und Schlüssel im Client unter
+Einstellungen, Netzwerk, ID/Relay-Server ein. Der API-Server wird automatisch
+als `http://<server>:21114` abgeleitet.
+
+## Branding
+
+Die Quelldateien für Logo und Icons liegen in `branding/` (`icon.svg` farbig,
+`mark.svg` einfarbig für Tray und Statusleiste). Daraus erzeugt
+`python3 branding/generate.py` alle Icon-Grössen für Desktop, Android, iOS,
+macOS und Windows (benötigt `rsvg-convert`, ImageMagick und Pillow).
+
+Intern läuft VibeDesk im «Custom Client»-Modus des Upstream-Codes: Der
+App-Name ist `VibeDesk`, Texte mit «RustDesk» werden zur Laufzeit ersetzt und
+der Update-Check gegen die RustDesk-Server ist abgeschaltet.
 
 ## Upstream-Updates übernehmen
 
@@ -68,6 +95,13 @@ den Submodule-Zeiger, kann beim Client- oder Server-Pull ein Konflikt auf
 `git rm --cached <prefix>/libs/hbb_common`, behält das Verzeichnis und
 committet. Danach das Skript erneut starten.
 
+## Datenschutz
+
+VibeDesk sendet von sich aus keine Daten an Dritte. Verbindungen laufen über
+den ID- und Relay-Server, den du selbst betreibst oder im Client einträgst.
+Welche Daten dort anfallen (Geräte-ID, IP-Adressen, Verbindungszeitpunkte),
+bestimmt der Betreiber dieses Servers.
+
 ## Lizenz und Marke
 
 Client und Server stehen unter der
@@ -76,5 +110,5 @@ Fork. Wer eine veränderte Version verbreitet oder als Netzwerkdienst anbietet,
 muss den Quellcode unter derselben Lizenz zugänglich machen.
 
 «RustDesk» ist eine Marke der Purslane Ltd. Name, Logo und Icons gehören nicht
-zur AGPL-Lizenz. Vor einer eigenen Verteilung sollten sie durch
-VibeDesk-Branding ersetzt werden.
+zur AGPL-Lizenz und wurden deshalb durch VibeDesk-Branding ersetzt. Die
+Copyright-Hinweise der ursprünglichen Autoren bleiben gemäss AGPL erhalten.

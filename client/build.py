@@ -357,13 +357,13 @@ def generate_control_file(version):
     control_file_path = "../res/DEBIAN/control"
     system2('/bin/rm -rf %s' % control_file_path)
 
-    content = """Package: rustdesk
+    content = """Package: vibedesk
 Section: net
 Priority: optional
 Version: %s
 Architecture: %s
-Maintainer: rustdesk <info@rustdesk.com>
-Homepage: https://rustdesk.com
+Maintainer: VibeDesk contributors <vibedesk@users.noreply.github.com>
+Homepage: https://github.com/simondietschi/vibedesk
 Depends: libgtk-3-0t64 | libgtk-3-0, libxcb-randr0, libxdo3 | libxdo4, libxfixes3, libxcb-shape0, libxcb-xfixes0, libasound2t64 | libasound2, libsystemd0, curl, libva2, libva-drm2, libva-x11-2, libgstreamer-plugins-base1.0-0, gstreamer1.0-pipewire%s
 Recommends: libayatana-appindicator3-1
 Description: A remote control software.
@@ -381,9 +381,9 @@ def ffi_bindgen_function_refactor():
 
 
 # libdrmtap is fetched at build time from the rustdesk-org fork at a pinned
-# commit — the same way rustdesk sources its other native build deps (vcpkg,
+# commit — the same way vibedesk sources its other native build deps (vcpkg,
 # flutter_rust_bridge, ...), rather than carrying a git submodule. It is the ONLY
-# pin for the drm backend: rustdesk dlopens this .so at runtime and does not depend on
+# pin for the drm backend: vibedesk dlopens this .so at runtime and does not depend on
 # the libdrmtap-sys crate (whose build.rs would statically link the C tree, a helper and
 # libdrm/seccomp/cap). DRMTAP_REPO, DRMTAP_SHA and DRMTAP_PREBUILT_DIR override it for local testing
 # or another fork, and each requires DRMTAP_ALLOW_UNPINNED=1 alongside it (see below).
@@ -529,7 +529,7 @@ def build_libdrmtap_so():
     # the build rather than shipping it, so this is a developer-build correctness fix and not a
     # security one -- but it turns a confusing failure into no failure at all.
     if not os.path.exists(os.path.join(build_dir, 'build.ninja')):
-        # -Dhelper=disabled: rustdesk never uses the privileged helper. The capture context is
+        # -Dhelper=disabled: vibedesk never uses the privileged helper. The capture context is
         # opened only in the root service (every drmtap_open lives in src/ipc/drm.rs), which
         # already has CAP_SYS_ADMIN, and the unprivileged side opens a render node instead. Without
         # this the library still carries the fallback: a fork/exec that walks six hardcoded paths,
@@ -542,7 +542,7 @@ def build_libdrmtap_so():
     # Build only the shared library, not the bundled helper binary or the static archive. Since
     # libdrmtap 0.4.11 the project is `both_libraries` (a version-scripted .so + a static .a), so the
     # bare `drmtap` target is ambiguous ("drmtap:shared_library" vs "drmtap:static_library"); ask for
-    # the shared one explicitly (rustdesk dlopens the .so and never needs the archive).
+    # the shared one explicitly (vibedesk dlopens the .so and never needs the archive).
     system2(f'meson compile -C "{build_dir}" drmtap:shared_library')
     sos = glob.glob(os.path.join(build_dir, 'libdrmtap.so.0.*'))
     # keep the real object (libdrmtap.so.0.4.x), not the .so/.so.0 symlinks or meson's .p dir, and
@@ -569,7 +569,7 @@ def _assert_so_has_no_helper(so_path):
     if found:
         raise Exception(
             f'{so_path} still carries the privileged-helper fallback ({", ".join(found)}). '
-            f'It must be built with -Dhelper=disabled: rustdesk captures as root and never uses '
+            f'It must be built with -Dhelper=disabled: vibedesk captures as root and never uses '
             f'the helper, so this is a fork/exec path in the privileged process that nothing '
             f'reaches. Delete third_party/libdrmtap/build-pkg and rebuild.')
 
@@ -604,7 +604,7 @@ def _assert_so_has_egl(so_path):
             'libgles2-mesa-dev; Arch: mesa libglvnd).')
 
 
-DRM_PACKAGE_NAME = 'rustdesk-unattended-wayland'
+DRM_PACKAGE_NAME = 'vibedesk-unattended-wayland'
 
 
 def assert_so_satisfies_the_runtime_abi_gate(so_path):
@@ -658,18 +658,18 @@ def assert_so_satisfies_the_runtime_abi_gate(so_path):
 
 def stage_libdrmtap_into_deb(so_path):
     # Put the built libdrmtap object plus its soname symlink into the staged deb. Only the soname
-    # symlink is needed: libdrmtap is resolved by ABSOLUTE path (/usr/lib/rustdesk/libdrmtap.so.0) at
-    # the in-process dlopen site (drmtap_dl.rs), so the deb does NOT drop /usr/lib/rustdesk into the
+    # symlink is needed: libdrmtap is resolved by ABSOLUTE path (/usr/lib/vibedesk/libdrmtap.so.0) at
+    # the in-process dlopen site (drmtap_dl.rs), so the deb does NOT drop /usr/lib/vibedesk into the
     # system-wide /etc/ld.so.conf.d search path, which would let this private library shadow a system
     # library for every binary on the host (Debian Policy 10.2 forbids that). No ld.so.conf.d drop-in
     # and no ldconfig trigger are shipped, so the stock postinst is used unchanged.
     assert_so_satisfies_the_runtime_abi_gate(so_path)
     so_basename = os.path.basename(so_path)
-    system2('mkdir -p tmpdeb/usr/lib/rustdesk')
+    system2('mkdir -p tmpdeb/usr/lib/vibedesk')
     # Quoted: so_path comes from the repo root or from DRMTAP_PREBUILT_DIR, either of which can
     # contain a space, and an unquoted interpolation would split the argument and fail obscurely.
-    system2(f'cp "{so_path}" tmpdeb/usr/lib/rustdesk/')
-    system2(f'ln -sf "{so_basename}" tmpdeb/usr/lib/rustdesk/libdrmtap.so.0')
+    system2(f'cp "{so_path}" tmpdeb/usr/lib/vibedesk/')
+    system2(f'ln -sf "{so_basename}" tmpdeb/usr/lib/vibedesk/libdrmtap.so.0')
 
 
 def _max_glibc_minor(path):
@@ -690,9 +690,9 @@ def _max_glibc_minor(path):
 def measured_glibc_floor():
     # libdrmtap is built on a newer base than the rest of the deb, so the floor is whichever staged
     # object is higher -- and it moves whenever either base does.
-    paths = [p for p in glob.glob('tmpdeb/usr/lib/rustdesk/libdrmtap.so.0.*')
-             + glob.glob('tmpdeb/usr/share/rustdesk/lib/librustdesk.so')
-             + glob.glob('tmpdeb/usr/share/rustdesk/rustdesk')
+    paths = [p for p in glob.glob('tmpdeb/usr/lib/vibedesk/libdrmtap.so.0.*')
+             + glob.glob('tmpdeb/usr/share/vibedesk/lib/librustdesk.so')
+             + glob.glob('tmpdeb/usr/share/vibedesk/vibedesk')
              if os.path.isfile(p) and not os.path.islink(p)]
     minor = max((_max_glibc_minor(p) for p in paths), default=0)
     if not minor:
@@ -716,9 +716,9 @@ def retarget_control_to_drm_variant():
         lines = f.readlines()
     out = []
     for line in lines:
-        if line.startswith('Package: rustdesk'):
+        if line.startswith('Package: vibedesk'):
             out.append(f'Package: {DRM_PACKAGE_NAME}\n')
-            out.append('Conflicts: rustdesk\nReplaces: rustdesk\nProvides: rustdesk\n')
+            out.append('Conflicts: vibedesk\nReplaces: vibedesk\nProvides: vibedesk\n')
         elif line.startswith('Depends:'):
             # 2.4.101 is where drmModeGetFB2 landed; below it libdrmtap loads and can never capture.
             out.append(line.rstrip('\n') + ', libdrm2 (>= 2.4.101), libegl1, libgles2, '
@@ -726,7 +726,7 @@ def retarget_control_to_drm_variant():
         else:
             out.append(line)
     body = ''.join(out)
-    # Fail loudly rather than silently shipping a package that says `rustdesk`: a stock control file
+    # Fail loudly rather than silently shipping a package that says `vibedesk`: a stock control file
     # that stopped matching either anchor would otherwise produce a variant deb wearing the stock name.
     if f'Package: {DRM_PACKAGE_NAME}\n' not in body or 'libegl1' not in body:
         raise Exception(f'could not retarget {path} to the drm variant; upstream control layout changed')
@@ -741,27 +741,27 @@ def build_flutter_deb(version, features):
     os.chdir('flutter')
     system2('flutter build linux --release')
     system2('mkdir -p tmpdeb/usr/bin/')
-    system2('mkdir -p tmpdeb/usr/share/rustdesk')
-    system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')
+    system2('mkdir -p tmpdeb/usr/share/vibedesk')
+    system2('mkdir -p tmpdeb/usr/share/vibedesk/files/systemd/')
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
     system2('mkdir -p tmpdeb/usr/share/applications/')
     system2('mkdir -p tmpdeb/usr/share/polkit-1/actions')
-    system2('rm tmpdeb/usr/bin/rustdesk || true')
+    system2('rm tmpdeb/usr/bin/vibedesk || true')
     system2(
-        f'cp -r {flutter_build_dir}/* tmpdeb/usr/share/rustdesk/')
+        f'cp -r {flutter_build_dir}/* tmpdeb/usr/share/vibedesk/')
     system2(
-        'cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/')
+        'cp ../res/vibedesk.service tmpdeb/usr/share/vibedesk/files/systemd/')
     system2(
-        'cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png')
+        'cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/vibedesk.png')
     system2(
-        'cp ../res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/rustdesk.svg')
+        'cp ../res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/vibedesk.svg')
     system2(
-        'cp ../res/rustdesk.desktop tmpdeb/usr/share/applications/rustdesk.desktop')
+        'cp ../res/vibedesk.desktop tmpdeb/usr/share/applications/vibedesk.desktop')
     system2(
-        'cp ../res/rustdesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop')
+        'cp ../res/vibedesk-link.desktop tmpdeb/usr/share/applications/vibedesk-link.desktop')
     system2(
-        "echo \"#!/bin/sh\" >> tmpdeb/usr/share/rustdesk/files/polkit && chmod a+x tmpdeb/usr/share/rustdesk/files/polkit")
+        "echo \"#!/bin/sh\" >> tmpdeb/usr/share/vibedesk/files/polkit && chmod a+x tmpdeb/usr/share/vibedesk/files/polkit")
     # Bundle libdrmtap.so only when this build actually enabled the `drm` feature, so stock packages
     # stay exactly what they were. The root service dlopens it in-process by absolute path.
     # `features` is the comma-joined string, so split it: a bare substring test would also match any
@@ -780,18 +780,18 @@ def build_flutter_deb(version, features):
         retarget_control_to_drm_variant()
     system2('cp -a ../res/DEBIAN/* tmpdeb/DEBIAN/')
     md5_file_folder("tmpdeb/")
-    system2('dpkg-deb -b tmpdeb rustdesk.deb;')
+    system2('dpkg-deb -b tmpdeb vibedesk.deb;')
 
     system2('/bin/rm -rf tmpdeb/')
     system2('/bin/rm -rf ../res/DEBIAN/control')
-    os.rename('rustdesk.deb', '../rustdesk-%s.deb' % version)
+    os.rename('vibedesk.deb', '../vibedesk-%s.deb' % version)
     if ships_so:
         # Named apart from the stock package so installing the consent-free variant is a deliberate act.
-        os.rename('../rustdesk-%s.deb' % version, f'../{DRM_PACKAGE_NAME}-{version}.deb')
+        os.rename('../vibedesk-%s.deb' % version, f'../{DRM_PACKAGE_NAME}-{version}.deb')
     os.chdir("..")
 
 
-DRMTAP_DLOPEN_MARKER = b'/usr/lib/rustdesk/libdrmtap.so.0'
+DRMTAP_DLOPEN_MARKER = b'/usr/lib/vibedesk/libdrmtap.so.0'
 # Present only when `drm-wake` is compiled in: the runtime option constant is itself
 # #[cfg(feature = "drm-wake")] (src/ipc/drm.rs). The dlopen marker above cannot stand in for it -
 # `--features drm` alone produces a binary that carries the dlopen path and NO wake code, and that
@@ -824,8 +824,8 @@ def assert_staged_binary_is_drm():
     Called from BOTH packaging paths. It used to guard only one of them, and `--skip-cargo` (which
     is how CI packages) reaches the other, where nothing had rebuilt the binary at all.
     """
-    binaries = [p for p in glob.glob('tmpdeb/usr/share/rustdesk/lib/librustdesk.so')
-                + glob.glob('tmpdeb/usr/share/rustdesk/rustdesk') if os.path.isfile(p)]
+    binaries = [p for p in glob.glob('tmpdeb/usr/share/vibedesk/lib/librustdesk.so')
+                + glob.glob('tmpdeb/usr/share/vibedesk/vibedesk') if os.path.isfile(p)]
     if not any(_carries_drmtap_marker(p) for p in binaries):
         raise Exception(
             f'--drm was requested but the staged bundle does not look like a drm build (no '
@@ -849,34 +849,34 @@ def assert_staged_binary_is_drm():
 def build_deb_from_folder(version, binary_folder, want_drm=False):
     os.chdir('flutter')
     system2('mkdir -p tmpdeb/usr/bin/')
-    system2('mkdir -p tmpdeb/usr/share/rustdesk')
-    system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')
+    system2('mkdir -p tmpdeb/usr/share/vibedesk')
+    system2('mkdir -p tmpdeb/usr/share/vibedesk/files/systemd/')
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
     system2('mkdir -p tmpdeb/usr/share/applications/')
     system2('mkdir -p tmpdeb/usr/share/polkit-1/actions')
-    system2('rm tmpdeb/usr/bin/rustdesk || true')
+    system2('rm tmpdeb/usr/bin/vibedesk || true')
     system2(
-        f'cp -r ../{binary_folder}/* tmpdeb/usr/share/rustdesk/')
+        f'cp -r ../{binary_folder}/* tmpdeb/usr/share/vibedesk/')
     system2(
-        'cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/')
+        'cp ../res/vibedesk.service tmpdeb/usr/share/vibedesk/files/systemd/')
     system2(
-        'cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png')
+        'cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/vibedesk.png')
     system2(
-        'cp ../res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/rustdesk.svg')
+        'cp ../res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/vibedesk.svg')
     system2(
-        'cp ../res/rustdesk.desktop tmpdeb/usr/share/applications/rustdesk.desktop')
+        'cp ../res/vibedesk.desktop tmpdeb/usr/share/applications/vibedesk.desktop')
     system2(
-        'cp ../res/rustdesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop')
+        'cp ../res/vibedesk-link.desktop tmpdeb/usr/share/applications/vibedesk-link.desktop')
     system2(
-        "echo \"#!/bin/sh\" >> tmpdeb/usr/share/rustdesk/files/polkit && chmod a+x tmpdeb/usr/share/rustdesk/files/polkit")
+        "echo \"#!/bin/sh\" >> tmpdeb/usr/share/vibedesk/files/polkit && chmod a+x tmpdeb/usr/share/vibedesk/files/polkit")
     # Where the capture library comes from for a `--package <folder> --drm` build. Two shapes are
     # supported, because two exist in practice: a bundle that already carries libdrmtap.so.0.*
     # (someone staged it, e.g. a CI artifact), and a plain bundle, which is what every build path
     # here actually produces -- the flutter deb builds the library straight into the staged deb, so
     # nothing ever puts it inside the bundle folder. Demanding it in the bundle made this flag
     # combination impossible to satisfy.
-    bundled_glob = glob.glob('tmpdeb/usr/share/rustdesk/libdrmtap.so.0.*')
+    bundled_glob = glob.glob('tmpdeb/usr/share/vibedesk/libdrmtap.so.0.*')
     bundle_carries_so = any(os.path.isfile(p) and not os.path.islink(p) for p in bundled_glob)
     # The variant must be decided by the EXPLICIT --drm request, not merely by what happens to be
     # staged: a bundle that carries the .so must NOT be shipped as the consent-bypass variant when
@@ -907,7 +907,7 @@ def build_deb_from_folder(version, binary_folder, want_drm=False):
             _assert_so_has_no_helper(so)
             stage_libdrmtap_into_deb(so)
             system2(f'rm -f "{so}"')
-            system2('rm -f tmpdeb/usr/share/rustdesk/libdrmtap.so tmpdeb/usr/share/rustdesk/libdrmtap.so.0')
+            system2('rm -f tmpdeb/usr/share/vibedesk/libdrmtap.so tmpdeb/usr/share/vibedesk/libdrmtap.so.0')
         else:
             # Build it here, exactly as the flutter deb path does (build_libdrmtap_so asserts the
             # EGL backend itself). The library is independent of the staged binary.
@@ -921,13 +921,13 @@ def build_deb_from_folder(version, binary_folder, want_drm=False):
         retarget_control_to_drm_variant()
     system2('cp -a ../res/DEBIAN/* tmpdeb/DEBIAN/')
     md5_file_folder("tmpdeb/")
-    system2('dpkg-deb -b tmpdeb rustdesk.deb;')
+    system2('dpkg-deb -b tmpdeb vibedesk.deb;')
 
     system2('/bin/rm -rf tmpdeb/')
     system2('/bin/rm -rf ../res/DEBIAN/control')
-    os.rename('rustdesk.deb', '../rustdesk-%s.deb' % version)
+    os.rename('vibedesk.deb', '../vibedesk-%s.deb' % version)
     if want_drm:
-        os.rename('../rustdesk-%s.deb' % version, f'../{DRM_PACKAGE_NAME}-{version}.deb')
+        os.rename('../vibedesk-%s.deb' % version, f'../{DRM_PACKAGE_NAME}-{version}.deb')
     os.chdir("..")
 
 
@@ -946,11 +946,11 @@ def build_flutter_dmg(version, features):
     mac_arch = 'arm64' if platform.machine().lower() in ('arm64', 'aarch64') else 'x86_64'
     system2(
         f'FLUTTER_XCODE_ARCHS={mac_arch} FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES flutter build macos --release')
-    system2('cp -rf ../target/release/service ./build/macos/Build/Products/Release/RustDesk.app/Contents/MacOS/')
+    system2('cp -rf ../target/release/service ./build/macos/Build/Products/Release/VibeDesk.app/Contents/MacOS/')
     '''
     system2(
-        "create-dmg --volname \"RustDesk Installer\" --window-pos 200 120 --window-size 800 400 --icon-size 100 --app-drop-link 600 185 --icon RustDesk.app 200 190 --hide-extension RustDesk.app rustdesk.dmg ./build/macos/Build/Products/Release/RustDesk.app")
-    os.rename("rustdesk.dmg", f"../rustdesk-{version}.dmg")
+        "create-dmg --volname \"VibeDesk Installer\" --window-pos 200 120 --window-size 800 400 --icon-size 100 --app-drop-link 600 185 --icon VibeDesk.app 200 190 --hide-extension VibeDesk.app vibedesk.dmg ./build/macos/Build/Products/Release/VibeDesk.app")
+    os.rename("vibedesk.dmg", f"../vibedesk-{version}.dmg")
     '''
     os.chdir("..")
 
@@ -982,7 +982,7 @@ def build_flutter_windows(version, features, skip_portable_pack):
     os.chdir('libs/portable')
     system2('pip3 install -r requirements.txt')
     system2(
-        f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}/rustdesk.exe')
+        f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}/vibedesk.exe')
     os.chdir('../..')
     if os.path.exists('./rustdesk_portable.exe'):
         os.replace('./target/release/rustdesk-portable-packer.exe',
@@ -992,9 +992,9 @@ def build_flutter_windows(version, features, skip_portable_pack):
                   './rustdesk_portable.exe')
     print(
         f'output location: {os.path.abspath(os.curdir)}/rustdesk_portable.exe')
-    os.rename('./rustdesk_portable.exe', f'./rustdesk-{version}-install.exe')
+    os.rename('./rustdesk_portable.exe', f'./vibedesk-{version}-install.exe')
     print(
-        f'output location: {os.path.abspath(os.curdir)}/rustdesk-{version}-install.exe')
+        f'output location: {os.path.abspath(os.curdir)}/vibedesk-{version}-install.exe')
 
 
 def main():
@@ -1155,15 +1155,15 @@ def main():
                 system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
                 system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
                 system2(
-                    'cp res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/')
+                    'cp res/vibedesk.service tmpdeb/usr/share/rustdesk/files/systemd/')
                 system2(
                     'cp res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png')
                 system2(
                     'cp res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/rustdesk.svg')
                 system2(
-                    'cp res/rustdesk.desktop tmpdeb/usr/share/applications/rustdesk.desktop')
+                    'cp res/vibedesk.desktop tmpdeb/usr/share/applications/rustdesk.desktop')
                 system2(
-                    'cp res/rustdesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop')
+                    'cp res/vibedesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop')
                 os.system('cp -a DEBIAN/* tmpdeb/DEBIAN/')
                 system2('strip tmpdeb/usr/bin/rustdesk')
                 system2('mkdir -p tmpdeb/usr/share/rustdesk')
