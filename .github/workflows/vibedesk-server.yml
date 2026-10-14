@@ -3,17 +3,14 @@ name: VibeDesk Server
 # Baut hbbs, hbbr und die VibeDesk-Konsole als statische Linux-Binaries und
 # als Docker-Image.
 #
-# Pull Request:   bauen und prüfen, nichts veröffentlichen
+# Pull Request:   bauen und prüfen, nichts veröffentlichen. Läuft bei jedem
+#                 PR, damit der Pflicht-Check «CI» immer ein Ergebnis hat.
+#                 Ohne Änderungen am Server ist er nach wenigen Sekunden grün.
 # Push auf main:  zusätzlich Image ghcr.io/<owner>/vibedesk-server:edge
 # Tag server-v*:  zusätzlich Image :<version> und :latest sowie Release-Entwurf
 
 on:
   pull_request:
-    paths:
-      - "server/**"
-      - "console/**"
-      - "deploy/**"
-      - ".github/workflows/vibedesk-server.yml"
   push:
     branches:
       - main
@@ -40,8 +37,40 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  changes:
+    name: Änderungen prüfen
+    runs-on: ubuntu-24.04
+    outputs:
+      server: ${{ steps.check.outputs.server }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Betroffene Pfade bestimmen
+        id: check
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo "server=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$(git merge-base "$BASE" "$HEAD")" "$HEAD")
+          echo "$files"
+          if echo "$files" | grep -qE '^(server|console|deploy)/|^\.github/workflows/vibedesk-server\.yml$'; then
+            echo "server=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "server=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Tests
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -73,6 +102,8 @@ jobs:
 
   build:
     name: Linux ${{ matrix.arch }}
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -238,6 +269,26 @@ jobs:
             --label "org.opencontainers.image.title=VibeDesk Server" \
             "${args[@]}" \
             --output "type=image,push=$PUSH"
+
+  # Pflicht-Check für main. Grün, wenn nichts fehlgeschlagen ist. Übersprungene
+  # Jobs (keine Server-Änderung) zählen als bestanden.
+  ci:
+    name: CI
+    needs: [changes, test, build, docker]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Ergebnis zusammenfassen
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Ergebnisse: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "Mindestens ein Job ist fehlgeschlagen oder abgebrochen."; exit 1 ;;
+            esac
+          done
 
   release:
     name: Release-Entwurf erstellen
