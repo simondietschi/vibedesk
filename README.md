@@ -14,6 +14,7 @@ zusammengeführt in einem Monorepo.
 | `server/`                 | ID-/Rendezvous-Server `hbbs` und Relay `hbbr`      | `rustdesk/rustdesk-server` |
 | `server/libs/hbb_common/` | Gemeinsame Bibliothek, Stand gemäss Server-Upstream | `rustdesk/hbb_common` |
 | `scripts/`                | Hilfsskripte (Upstream-Sync)                       | |
+| `console/`                | Verwaltungskonsole (Benutzer, Geräte)              | |
 | `deploy/`                 | Docker-Image, Compose-Datei, systemd-Units         | |
 
 Upstream verwaltet `hbb_common` als Git-Submodule. Hier ist es ein normaler
@@ -24,10 +25,23 @@ fixiert sind.
 ## Server installieren
 
 Fertige Server-Pakete (statische Linux-Binaries für x86_64, aarch64 und
-armv7 mit systemd-Units) und das Docker-Image
+armv7 mit systemd-Units, inklusive Verwaltungskonsole) und das Docker-Image
 `ghcr.io/simondietschi/vibedesk-server` baut der Workflow
 `.github/workflows/vibedesk-server.yml`. Die Installation steht in
 [`deploy/README.md`](deploy/README.md).
+
+## Verwaltungskonsole
+
+`console/` enthält eine eigene Weboberfläche für den Server, keinen Nachbau
+von RustDesk Pro. Sie läuft auf Port 21114, wo die Clients ohnehin ihre
+Heartbeats hinschicken, und bietet:
+
+- Geräteübersicht mit Online-Status, Gerätename, Benutzer, System und Notizen
+- Benutzerverwaltung mit den Rollen Admin und Benutzer
+- Anmeldung mit Passwort und optionaler Zwei-Faktor-Anmeldung (TOTP)
+
+Installation und HTTPS-Einrichtung: [`deploy/README.md`](deploy/README.md#konsole).
+Entwickeln: `cd console && cargo run -- create-admin admin && cargo run`.
 
 ## Server selbst bauen
 

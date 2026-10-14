@@ -1,11 +1,13 @@
 # VibeDesk-Server installieren
 
-Der Server besteht aus zwei Diensten:
+Der Server besteht aus drei Diensten:
 
 - **hbbs**, der ID-/Rendezvous-Server: Geräte melden sich hier an und finden sich gegenseitig.
 - **hbbr**, der Relay-Server: Er leitet Verbindungen weiter, wenn keine direkte Verbindung möglich ist.
+- **vibedesk-console**, die Verwaltungskonsole: Weboberfläche für Benutzer
+  und Geräte. Sie ist optional, hbbs und hbbr laufen auch ohne sie.
 
-Beide laufen normalerweise auf demselben Server. Ein kleiner VPS mit 1 CPU
+Alle drei laufen normalerweise auf demselben Server. Ein kleiner VPS mit 1 CPU
 und 1 GB RAM reicht für einige hundert Geräte. Bei vielen Relay-Verbindungen
 ist die Bandbreite der Engpass.
 
@@ -15,6 +17,7 @@ In der Firewall freigeben:
 
 | Port  | Protokoll | Dienst | Zweck |
 |-------|-----------|--------|-------|
+| 21114 | TCP       | Konsole | Heartbeats der Clients, Weboberfläche |
 | 21115 | TCP       | hbbs   | NAT-Test |
 | 21116 | TCP + UDP | hbbs   | ID/Rendezvous |
 | 21117 | TCP       | hbbr   | Relay |
@@ -28,7 +31,11 @@ mkdir vibedesk && cd vibedesk
 curl -O https://raw.githubusercontent.com/simondietschi/vibedesk/main/deploy/docker-compose.yml
 docker compose up -d
 cat data/id_ed25519.pub
+docker compose exec console vibedesk-console create-admin simon
 ```
+
+Der letzte Befehl legt das erste Admin-Konto der Konsole an und gibt dessen
+Passwort aus.
 
 Das Image `ghcr.io/simondietschi/vibedesk-server` gibt es für amd64, arm64
 und armv7. Tags:
@@ -52,12 +59,13 @@ Aus dem Release das Archiv für die eigene Architektur laden
 ```sh
 tar xzf vibedesk-server-*-linux-x86_64.tar.gz
 cd vibedesk-server-*-linux-x86_64
-install -m 755 hbbs hbbr rustdesk-utils /usr/local/bin/
+install -m 755 hbbs hbbr rustdesk-utils vibedesk-console /usr/local/bin/
 useradd --system --home-dir /var/lib/vibedesk --create-home --shell /usr/sbin/nologin vibedesk
 install -m 644 systemd/*.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now vibedesk-hbbr vibedesk-hbbs
+systemctl enable --now vibedesk-hbbr vibedesk-hbbs vibedesk-console
 cat /var/lib/vibedesk/id_ed25519.pub
+sudo -u vibedesk vibedesk-console --db /var/lib/vibedesk/console.sqlite3 create-admin simon
 ```
 
 Die Binaries sind statisch gelinkt und laufen auf jeder Linux-Distribution.
@@ -86,3 +94,82 @@ Mit der Option `-k _` lassen `hbbs` und `hbbr` nur Clients zu, die den
 öffentlichen Schlüssel dieses Servers kennen. In `docker-compose.yml` sind die
 passenden Zeilen vorbereitet, für systemd die `ExecStart`-Zeilen um `-k _`
 ergänzen (`systemctl edit --full vibedesk-hbbs`).
+
+## Konsole
+
+Die Konsole ist unter `http://<server>:21114` erreichbar. Sie zeigt:
+
+- **Geräte:** alle Geräte, die bei hbbs registriert sind, mit Online-Status,
+  Gerätename, angemeldetem Benutzer, Betriebssystem, Version und Notizen.
+  Die Clients senden dafür alle 15 Sekunden einen Heartbeat an Port 21114.
+  Dazu muss am Client nichts eingestellt werden, er leitet die Adresse aus
+  dem ID-Server ab.
+- **Benutzer:** Konten anlegen, sperren, löschen, Passwort und Zwei-Faktor
+  zurücksetzen. Rolle «Admin» darf alles, Rolle «Benutzer» nur das eigene
+  Konto verwalten. Die Benutzer werden ab der nächsten Etappe für das
+  Adressbuch im Client gebraucht.
+- **Mein Konto:** Passwort ändern, Zwei-Faktor-Anmeldung mit einer
+  Authenticator-App einrichten.
+
+Die Konsole prüft jeden Heartbeat gegen die Gerätedatenbank von hbbs: Nur
+ein Gerät, dessen ID und interne UUID dort registriert sind, kann Daten
+melden. Dafür braucht die Konsole Lesezugriff auf `db_v2.sqlite3`
+(`VIBEDESK_HBBS_DB`). Das Verzeichnis darf nicht schreibgeschützt eingehängt
+sein, weil SQLite neben der Datei Sperrdateien braucht. Die Konsole selbst
+öffnet die Datei nur lesend.
+
+Nach fünf falschen Anmeldungen sperrt die Konsole Benutzername und
+IP-Adresse für 15 Minuten. Passwort vergessen:
+
+```sh
+docker compose exec console vibedesk-console reset-password simon
+# oder ohne Docker:
+sudo -u vibedesk vibedesk-console --db /var/lib/vibedesk/console.sqlite3 reset-password simon
+```
+
+### Einstellungen
+
+| Variable | Standard | Bedeutung |
+|----------|----------|-----------|
+| `VIBEDESK_CONSOLE_LISTEN` | `0.0.0.0:21114` | Adresse und Port |
+| `VIBEDESK_CONSOLE_DB` | `console.sqlite3` | Datenbank der Konsole |
+| `VIBEDESK_HBBS_DB` | leer | Gerätedatenbank von hbbs, nur lesend |
+| `VIBEDESK_CONSOLE_SECURE_COOKIES` | `false` | Anmelde-Cookie nur über HTTPS senden |
+| `VIBEDESK_CONSOLE_TRUST_PROXY` | `false` | Client-Adresse aus `X-Forwarded-For` lesen |
+
+### HTTPS
+
+Port 21114 spricht nur HTTP. Für die Heartbeats der Clients reicht das, für
+die Anmeldung an der Konsole über das Internet nicht. Mit
+[Caddy](https://caddyserver.com) als Proxy bekommt die Weboberfläche ein
+Let's-Encrypt-Zertifikat, und auf Port 21114 bleiben nur die Client-Endpunkte
+offen.
+
+Konsole intern auf Port 21180 umstellen (in `docker-compose.yml` bzw. der
+systemd-Unit sind die Zeilen vorbereitet):
+
+```
+VIBEDESK_CONSOLE_LISTEN=127.0.0.1:21180
+VIBEDESK_CONSOLE_SECURE_COOKIES=true
+VIBEDESK_CONSOLE_TRUST_PROXY=true
+```
+
+`/etc/caddy/Caddyfile`:
+
+```
+konsole.example.ch {
+	reverse_proxy 127.0.0.1:21180
+}
+
+http://:21114 {
+	handle /api/* {
+		reverse_proxy 127.0.0.1:21180
+	}
+	handle {
+		respond 404
+	}
+}
+```
+
+Für `konsole.example.ch` braucht es einen DNS-Eintrag auf den Server und
+offene Ports 80 und 443.

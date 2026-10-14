@@ -1,6 +1,7 @@
 name: VibeDesk Server
 
-# Baut hbbs und hbbr als statische Linux-Binaries und als Docker-Image.
+# Baut hbbs, hbbr und die VibeDesk-Konsole als statische Linux-Binaries und
+# als Docker-Image.
 #
 # Pull Request:   bauen und prüfen, nichts veröffentlichen
 # Push auf main:  zusätzlich Image ghcr.io/<owner>/vibedesk-server:edge
@@ -10,6 +11,7 @@ on:
   pull_request:
     paths:
       - "server/**"
+      - "console/**"
       - "deploy/**"
       - ".github/workflows/vibedesk-server.yml"
   push:
@@ -17,6 +19,7 @@ on:
       - main
     paths:
       - "server/**"
+      - "console/**"
       - "deploy/**"
       - ".github/workflows/vibedesk-server.yml"
     tags:
@@ -40,9 +43,6 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: server
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -51,14 +51,25 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: ${{ env.RUST_VERSION }}
+          components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           prefix-key: server-test
-          workspaces: server
+          workspaces: |
+            server
+            console
 
-      - name: Tests ausführen
+      - name: Server testen
+        working-directory: server
         run: cargo test --locked --bins --lib
+
+      - name: Konsole prüfen
+        working-directory: console
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
 
   build:
     name: Linux ${{ matrix.arch }}
@@ -83,13 +94,19 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           prefix-key: server-${{ matrix.arch }}
-          workspaces: server
+          workspaces: |
+            server
+            console
 
       - name: cross installieren
         run: cargo install cross --locked --version "$CROSS_VERSION"
 
-      - name: Bauen
+      - name: Server bauen
         working-directory: server
+        run: cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Konsole bauen
+        working-directory: console
         run: cross build --release --locked --target ${{ matrix.target }}
 
       - name: Version bestimmen
@@ -108,13 +125,15 @@ jobs:
         env:
           BIN: server/target/${{ matrix.target }}/release
         run: |
-          for b in hbbs hbbr rustdesk-utils; do
+          cp console/target/${{ matrix.target }}/release/vibedesk-console "$BIN/"
+          for b in hbbs hbbr rustdesk-utils vibedesk-console; do
             file "$BIN/$b"
             file "$BIN/$b" | grep -q "statically linked\|static-pie linked" || { echo "$b ist nicht statisch gelinkt"; exit 1; }
           done
           if [ "${{ matrix.arch }}" = x86_64 ]; then
             "$BIN/hbbs" --help | head -3
             "$BIN/hbbr" --help | head -3
+            "$BIN/vibedesk-console" --version
           fi
 
       - name: Paket erstellen
@@ -123,8 +142,8 @@ jobs:
           NAME: vibedesk-server-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}
         run: |
           mkdir -p "dist/$NAME/systemd" "docker-bin/${{ matrix.docker }}"
-          install -m 755 "$BIN/hbbs" "$BIN/hbbr" "$BIN/rustdesk-utils" "dist/$NAME/"
-          install -m 755 "$BIN/hbbs" "$BIN/hbbr" "$BIN/rustdesk-utils" "docker-bin/${{ matrix.docker }}/"
+          install -m 755 "$BIN/hbbs" "$BIN/hbbr" "$BIN/rustdesk-utils" "$BIN/vibedesk-console" "dist/$NAME/"
+          install -m 755 "$BIN/hbbs" "$BIN/hbbr" "$BIN/rustdesk-utils" "$BIN/vibedesk-console" "docker-bin/${{ matrix.docker }}/"
           install -m 644 deploy/systemd/*.service "dist/$NAME/systemd/"
           install -m 644 deploy/README.md deploy/docker-compose.yml LICENSE "dist/$NAME/"
           tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
@@ -194,6 +213,7 @@ jobs:
           docker buildx build deploy/docker --platform linux/amd64 --tag vibedesk-server:local --load
           docker run --rm vibedesk-server:local hbbs --help | head -3
           docker run --rm vibedesk-server:local hbbr --help | head -3
+          docker run --rm vibedesk-server:local vibedesk-console --version
 
       - name: Bei ghcr.io anmelden
         if: steps.meta.outputs.push == 'true'
