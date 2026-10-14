@@ -1,0 +1,30 @@
+# VibeDesk-Server mit Docker Compose.
+#
+#   docker compose up -d
+#   cat data/id_ed25519.pub   # öffentlicher Schlüssel für den Client
+#
+# Host-Netzwerk, damit hbbs die echten IP-Adressen der Geräte sieht. Ohne
+# diese erkennt er NAT-Typen falsch und vermittelt seltener direkte
+# Verbindungen. Läuft nur unter Linux.
+
+services:
+  hbbs:
+    image: ghcr.io/simondietschi/vibedesk-server:latest
+    command: ["hbbs"]
+    # Nur Clients mit dem Schlüssel dieses Servers zulassen:
+    # command: ["hbbs", "-k", "_"]
+    network_mode: host
+    volumes:
+      - ./data:/data
+    depends_on:
+      - hbbr
+    restart: unless-stopped
+
+  hbbr:
+    image: ghcr.io/simondietschi/vibedesk-server:latest
+    command: ["hbbr"]
+    # command: ["hbbr", "-k", "_"]
+    network_mode: host
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

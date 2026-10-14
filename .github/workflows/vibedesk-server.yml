@@ -1,0 +1,245 @@
+name: VibeDesk Server
+
+# Baut hbbs und hbbr als statische Linux-Binaries und als Docker-Image.
+#
+# Pull Request:   bauen und prüfen, nichts veröffentlichen
+# Push auf main:  zusätzlich Image ghcr.io/<owner>/vibedesk-server:edge
+# Tag server-v*:  zusätzlich Image :<version> und :latest sowie Release-Entwurf
+
+on:
+  pull_request:
+    paths:
+      - "server/**"
+      - "deploy/**"
+      - ".github/workflows/vibedesk-server.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "server/**"
+      - "deploy/**"
+      - ".github/workflows/vibedesk-server.yml"
+    tags:
+      - "server-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  RUST_VERSION: "1.88"
+  CROSS_VERSION: "0.2.5"
+  CARGO_NET_RETRY: "10"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: server-test
+          workspaces: server
+
+      - name: Tests ausführen
+        run: cargo test --locked --bins --lib
+
+  build:
+    name: Linux ${{ matrix.arch }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64,  target: x86_64-unknown-linux-musl,      docker: amd64 }
+          - { arch: aarch64, target: aarch64-unknown-linux-musl,     docker: arm64 }
+          - { arch: armv7,   target: armv7-unknown-linux-musleabihf, docker: arm }
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: server-${{ matrix.arch }}
+          workspaces: server
+
+      - name: cross installieren
+        run: cargo install cross --locked --version "$CROSS_VERSION"
+
+      - name: Bauen
+        working-directory: server
+        run: cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Version bestimmen
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/server-v* ]]; then
+            version="${REF_NAME#server-v}"
+          else
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Binaries prüfen
+        env:
+          BIN: server/target/${{ matrix.target }}/release
+        run: |
+          for b in hbbs hbbr rustdesk-utils; do
+            file "$BIN/$b"
+            file "$BIN/$b" | grep -q "statically linked\|static-pie linked" || { echo "$b ist nicht statisch gelinkt"; exit 1; }
+          done
+          if [ "${{ matrix.arch }}" = x86_64 ]; then
+            "$BIN/hbbs" --help | head -3
+            "$BIN/hbbr" --help | head -3
+          fi
+
+      - name: Paket erstellen
+        env:
+          BIN: server/target/${{ matrix.target }}/release
+          NAME: vibedesk-server-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}
+        run: |
+          mkdir -p "dist/$NAME/systemd" "docker-bin/${{ matrix.docker }}"
+          install -m 755 "$BIN/hbbs" "$BIN/hbbr" "$BIN/rustdesk-utils" "dist/$NAME/"
+          install -m 755 "$BIN/hbbs" "$BIN/hbbr" "$BIN/rustdesk-utils" "docker-bin/${{ matrix.docker }}/"
+          install -m 644 deploy/systemd/*.service "dist/$NAME/systemd/"
+          install -m 644 deploy/README.md deploy/docker-compose.yml LICENSE "dist/$NAME/"
+          tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
+          rm -r "dist/$NAME"
+          ls -l dist
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: vibedesk-server-linux-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: docker-bin-${{ matrix.docker }}
+          path: docker-bin
+          if-no-files-found: error
+
+  docker:
+    name: Docker-Image
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: docker-bin-*
+          merge-multiple: true
+          path: deploy/docker/bin
+
+      # Artefakte verlieren beim Hochladen die Ausführungsrechte.
+      - name: Ausführungsrechte setzen
+        run: chmod -R a+x deploy/docker/bin
+
+      - name: Tags bestimmen
+        id: meta
+        env:
+          OWNER: ${{ github.repository_owner }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          image="ghcr.io/${OWNER,,}/vibedesk-server"
+          push=true
+          if [[ "$GITHUB_REF" == refs/tags/server-v* ]]; then
+            version="${REF_NAME#server-v}"
+            tags="$image:$version,$image:latest"
+          elif [ "$GITHUB_REF" = refs/heads/main ]; then
+            tags="$image:edge,$image:sha-${GITHUB_SHA::7}"
+          else
+            tags="$image:test"
+            push=false
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "push=$push" >> "$GITHUB_OUTPUT"
+          echo "Tags: $tags (push=$push)"
+
+      - name: Buildx einrichten
+        run: docker buildx create --use --name vibedesk
+
+      - name: Image testen (amd64)
+        run: |
+          docker buildx build deploy/docker --platform linux/amd64 --tag vibedesk-server:local --load
+          docker run --rm vibedesk-server:local hbbs --help | head -3
+          docker run --rm vibedesk-server:local hbbr --help | head -3
+
+      - name: Bei ghcr.io anmelden
+        if: steps.meta.outputs.push == 'true'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+
+      - name: Image bauen
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          PUSH: ${{ steps.meta.outputs.push }}
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          args=()
+          for t in ${TAGS//,/ }; do args+=(--tag "$t"); done
+          docker buildx build deploy/docker \
+            --platform linux/amd64,linux/arm64,linux/arm/v7 \
+            --label "org.opencontainers.image.source=$SOURCE" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.licenses=AGPL-3.0-only" \
+            --label "org.opencontainers.image.title=VibeDesk Server" \
+            "${args[@]}" \
+            --output "type=image,push=$PUSH"
+
+  release:
+    name: Release-Entwurf erstellen
+    needs: [test, build, docker]
+    if: startsWith(github.ref, 'refs/tags/server-v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: vibedesk-server-*
+          merge-multiple: true
+          path: dist
+
+      - name: Prüfsummen erstellen
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      # Als Entwurf, damit ein Release erst nach Durchsicht öffentlich wird.
+      - uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          name: VibeDesk Server ${{ github.ref_name }}
+          files: dist/*

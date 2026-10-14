@@ -14,13 +14,22 @@ zusammengeführt in einem Monorepo.
 | `server/`                 | ID-/Rendezvous-Server `hbbs` und Relay `hbbr`      | `rustdesk/rustdesk-server` |
 | `server/libs/hbb_common/` | Gemeinsame Bibliothek, Stand gemäss Server-Upstream | `rustdesk/hbb_common` |
 | `scripts/`                | Hilfsskripte (Upstream-Sync)                       | |
+| `deploy/`                 | Docker-Image, Compose-Datei, systemd-Units         | |
 
 Upstream verwaltet `hbb_common` als Git-Submodule. Hier ist es ein normaler
 Subtree, damit ein einfaches `git clone` ohne `--recursive` reicht. Client und
 Server haben je eine eigene Kopie, weil upstream unterschiedliche Stände
 fixiert sind.
 
-## Server bauen und starten
+## Server installieren
+
+Fertige Server-Pakete (statische Linux-Binaries für x86_64, aarch64 und
+armv7 mit systemd-Units) und das Docker-Image
+`ghcr.io/simondietschi/vibedesk-server` baut der Workflow
+`.github/workflows/vibedesk-server.yml`. Die Installation steht in
+[`deploy/README.md`](deploy/README.md).
+
+## Server selbst bauen
 
 ```sh
 cd server
@@ -145,7 +154,9 @@ committet. Danach das Skript erneut starten.
 
 ## Datenschutz
 
-VibeDesk sendet von sich aus keine Daten an Dritte. Verbindungen laufen über
+VibeDesk sendet von sich aus keine Daten an Dritte. Den täglichen
+Update-Check von `hbbs` gegen `api.rustdesk.com`, der dabei einen
+Geräte-Fingerabdruck mitschickt, haben wir entfernt. Verbindungen laufen über
 den ID- und Relay-Server, den du selbst betreibst oder im Client einträgst.
 Welche Daten dort anfallen (Geräte-ID, IP-Adressen, Verbindungszeitpunkte),
 bestimmt der Betreiber dieses Servers.
