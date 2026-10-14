@@ -32,6 +32,7 @@
       <nav>
         <a href="#geraete" data-view="devices">Geräte</a>
         <a href="#benutzer" data-view="users" data-admin>Benutzer</a>
+        <a href="#adressbuecher" data-view="books" data-admin>Adressbücher</a>
         <a href="#konto" data-view="account">Mein Konto</a>
       </nav>
       <span class="whoami"></span>
@@ -48,7 +49,7 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Status</th><th>ID</th><th>Name</th><th>Benutzer</th><th>System</th><th>Version</th><th>Zuletzt gesehen</th><th>Notiz</th><th></th></tr>
+            <tr><th>Status</th><th>ID</th><th>Name</th><th>Benutzer</th><th>Konto</th><th>System</th><th>Version</th><th>Zuletzt gesehen</th><th>Notiz</th><th></th></tr>
           </thead>
           <tbody id="device-rows"></tbody>
         </table>
@@ -66,6 +67,22 @@
             <tr><th>Benutzername</th><th>Name</th><th>Rolle</th><th>Status</th><th>Zwei-Faktor</th><th>Letzte Anmeldung</th><th></th></tr>
           </thead>
           <tbody id="user-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-books" class="view" hidden>
+      <div class="toolbar">
+        <h2>Adressbücher</h2>
+        <button id="book-new" class="primary">Adressbuch anlegen</button>
+      </div>
+      <p class="muted">Geteilte Adressbücher erscheinen im Client aller Mitglieder. Jeder Benutzer hat zusätzlich ein persönliches Adressbuch, das nur er sieht.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Besitzer</th><th>Einträge</th><th>Mitglieder</th><th>Notiz</th><th></th></tr>
+          </thead>
+          <tbody id="book-rows"></tbody>
         </table>
       </div>
     </section>

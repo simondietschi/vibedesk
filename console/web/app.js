@@ -177,12 +177,12 @@ async function showApp() {
 
 function route() {
   if (!me) return;
-  const views = { "#geraete": "devices", "#benutzer": "users", "#konto": "account" };
+  const views = { "#geraete": "devices", "#benutzer": "users", "#adressbuecher": "books", "#konto": "account" };
   let view = views[location.hash] || (me.role === "admin" ? "devices" : "account");
   if (me.role !== "admin" && view !== "account") view = "account";
   for (const v of $$(".view")) v.hidden = v.id !== "view-" + view;
   for (const a of $$("nav a")) a.classList.toggle("active", a.dataset.view === view);
-  ({ devices: loadDevices, users: loadUsers, account: loadAccount })[view]();
+  ({ devices: loadDevices, users: loadUsers, books: loadBooks, account: loadAccount })[view]();
 }
 
 // ----------------------------------------------------------------- Geräte
@@ -200,14 +200,14 @@ async function loadDevices() {
 function renderDevices() {
   const q = $("#device-filter").value.trim().toLowerCase();
   const rows = devices
-    .filter((d) => !q || [d.id, d.hostname, d.username, d.note, d.os, d.ip]
+    .filter((d) => !q || [d.id, d.hostname, d.username, d.account, d.note, d.os, d.ip]
       .some((v) => (v || "").toLowerCase().includes(q)))
     .sort((a, b) => (b.online - a.online) || ((b.last_seen_at || 0) - (a.last_seen_at || 0)) || a.id.localeCompare(b.id));
   const online = devices.filter((d) => d.online).length;
   $("#device-summary").textContent = `${online} von ${devices.length} online`;
   $("#device-rows").replaceChildren(...rows.map(deviceRow));
   if (!rows.length) {
-    $("#device-rows").append(h("tr", {}, h("td", { colspan: 9, class: "muted center" },
+    $("#device-rows").append(h("tr", {}, h("td", { colspan: 10, class: "muted center" },
       devices.length ? "Keine Treffer" : "Noch keine Geräte")));
   }
 }
@@ -222,6 +222,7 @@ function deviceRow(d) {
     h("td", { class: "mono" }, d.id),
     h("td", { title }, d.hostname || h("span", { class: "muted" }, "unbekannt")),
     h("td", {}, d.username),
+    h("td", {}, d.account || h("span", { class: "muted" }, "–")),
     h("td", { class: "clip", title: d.os }, d.os),
     h("td", {}, d.version),
     h("td", { title: formatDate(d.last_seen_at) }, relative(d.last_seen_at)),
@@ -348,6 +349,136 @@ async function deleteUser(u) {
   }) && loadUsers();
 }
 
+// ----------------------------------------------------------- Adressbücher
+
+const ruleLabels = { 1: "Lesen", 2: "Lesen und schreiben", 3: "Volle Kontrolle" };
+const ruleOptions = Object.entries(ruleLabels);
+
+async function loadBooks() {
+  const books = await api("GET", "/address-books");
+  $("#book-rows").replaceChildren(...books.map(bookRow));
+  if (!books.length) {
+    $("#book-rows").append(h("tr", {}, h("td", { colspan: 6, class: "muted center" }, "Noch keine geteilten Adressbücher")));
+  }
+}
+
+function bookRow(b) {
+  const members = b.members.length
+    ? b.members.map((m) => `${m.username} (${ruleLabels[m.rule]})`).join(", ")
+    : h("span", { class: "muted" }, "nur Besitzer");
+  return h("tr", {},
+    h("td", {}, b.name),
+    h("td", {}, b.owner),
+    h("td", {}, String(b.peer_count)),
+    h("td", { class: "clip", title: typeof members === "string" ? members : "" }, members),
+    h("td", { class: "clip note", title: b.note }, b.note),
+    h("td", { class: "row-actions" },
+      h("button", { class: "link", onclick: () => manageMembers(b) }, "Mitglieder"),
+      h("button", { class: "link", onclick: () => showBookPeers(b) }, "Einträge"),
+      h("button", { class: "link", onclick: () => editBook(b) }, "Bearbeiten"),
+      h("button", { class: "link danger", onclick: () => deleteBook(b) }, "Löschen")));
+}
+
+async function userOptions() {
+  const users = await api("GET", "/users");
+  return users.map((u) => [String(u.id), u.display_name ? `${u.username} (${u.display_name})` : u.username]);
+}
+
+async function newBook() {
+  const owners = await userOptions();
+  await dialog({
+    title: "Adressbuch anlegen",
+    fields: [
+      { name: "name", label: "Name", required: true },
+      { name: "note", label: "Notiz", type: "textarea", maxlength: 1000 },
+      { name: "owner_id", label: "Besitzer (volle Kontrolle)", options: owners, value: String(me.id) },
+    ],
+    okLabel: "Anlegen",
+    onOk: (v) => api("POST", "/address-books", { name: v.name, note: v.note, owner_id: Number(v.owner_id) }),
+  }) && loadBooks();
+}
+
+async function editBook(b) {
+  const owners = await userOptions();
+  await dialog({
+    title: `${b.name} bearbeiten`,
+    fields: [
+      { name: "name", label: "Name", value: b.name, required: true },
+      { name: "note", label: "Notiz", type: "textarea", value: b.note, maxlength: 1000 },
+      { name: "owner_id", label: "Besitzer (volle Kontrolle)", options: owners, value: String(b.owner_id) },
+    ],
+    okLabel: "Speichern",
+    onOk: (v) => api("PATCH", `/address-books/${b.guid}`, { name: v.name, note: v.note, owner_id: Number(v.owner_id) }),
+  }) && loadBooks();
+}
+
+async function deleteBook(b) {
+  await dialog({
+    title: "Adressbuch löschen",
+    text: `«${b.name}» mit ${b.peer_count} Einträgen endgültig löschen? Es verschwindet bei allen Mitgliedern.`,
+    okLabel: "Löschen",
+    danger: true,
+    onOk: () => api("DELETE", `/address-books/${b.guid}`),
+  }) && loadBooks();
+}
+
+async function manageMembers(b) {
+  const users = (await userOptions()).filter(([id]) => Number(id) !== b.owner_id);
+  const render = (book) => {
+    const list = book.members.length
+      ? h("ul", { class: "member-list" }, book.members.map((m) => h("li", {},
+          h("span", {}, m.username),
+          h("select", {
+            onchange: async (ev) => {
+              book = await api("PUT", `/address-books/${b.guid}/members/${m.user_id}`, { rule: Number(ev.target.value) });
+              render(book);
+            },
+          }, ruleOptions.map(([value, label]) => h("option", { value, selected: Number(value) === m.rule }, label))),
+          h("button", {
+            class: "link danger", type: "button",
+            onclick: async () => {
+              book = await api("DELETE", `/address-books/${b.guid}/members/${m.user_id}`);
+              render(book);
+            },
+          }, "Entfernen"))))
+      : h("p", { class: "muted" }, "Noch keine Mitglieder.");
+    $("#member-list-slot").replaceChildren(list);
+  };
+  const free = users.filter(([id]) => !b.members.some((m) => m.user_id === Number(id)));
+  const slot = h("div", { id: "member-list-slot" });
+  const done = dialog({
+    title: `Mitglieder von ${b.name}`,
+    text: [h("p", { class: "muted" }, `Besitzer: ${b.owner} (volle Kontrolle)`), slot,
+      h("p", {}, "Mitglied hinzufügen:")],
+    fields: [
+      { name: "user_id", label: "Benutzer", options: [["", "Bitte wählen"], ...free] },
+      { name: "rule", label: "Berechtigung", options: ruleOptions, value: "1" },
+    ],
+    okLabel: "Hinzufügen",
+    onOk: async (v) => {
+      if (!v.user_id) throw new Error("Bitte einen Benutzer wählen");
+      await api("PUT", `/address-books/${b.guid}/members/${v.user_id}`, { rule: Number(v.rule) });
+    },
+  });
+  render(b);
+  if (await done) await manageMembers((await api("GET", "/address-books")).find((x) => x.guid === b.guid) || b);
+  loadBooks();
+}
+
+async function showBookPeers(b) {
+  const peers = await api("GET", `/address-books/${b.guid}/peers`);
+  const table = peers.length
+    ? h("div", { class: "table-wrap" }, h("table", {},
+        h("thead", {}, h("tr", {}, h("th", {}, "ID"), h("th", {}, "Alias"), h("th", {}, "Name"), h("th", {}, "Tags"))),
+        h("tbody", {}, peers.map((p) => h("tr", {},
+          h("td", { class: "mono" }, p.id),
+          h("td", {}, p.alias || ""),
+          h("td", {}, p.hostname || ""),
+          h("td", {}, (p.tags || []).join(", ")))))))
+    : h("p", { class: "muted" }, "Noch keine Einträge. Mitglieder mit Schreibrecht fügen sie im Client hinzu.");
+  await dialog({ title: `Einträge in ${b.name}`, text: [table], cancel: false });
+}
+
 // ----------------------------------------------------------- Mein Konto
 
 async function loadAccount() {
@@ -428,6 +559,7 @@ function init() {
     try { await api("POST", "/logout"); } finally { showLogin(); }
   });
   $("#user-new").addEventListener("click", newUser);
+  $("#book-new").addEventListener("click", newBook);
   $("#device-filter").addEventListener("input", renderDevices);
   window.addEventListener("hashchange", route);
 

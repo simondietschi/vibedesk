@@ -8,7 +8,8 @@ use sqlx::{
 
 /// Schema-Versionen in Reihenfolge. Jede wird genau einmal ausgeführt,
 /// der Stand steht in `PRAGMA user_version`.
-const MIGRATIONS: &[&str] = &[r#"
+const MIGRATIONS: &[&str] = &[
+    r#"
 create table users (
     id integer primary key,
     username text not null unique collate nocase,
@@ -45,7 +46,53 @@ create table devices (
     first_seen_at integer,
     last_seen_at integer
 );
-"#];
+"#,
+    r#"
+create table api_tokens (
+    token_hash text primary key,
+    user_id integer not null references users(id) on delete cascade,
+    device_id text not null default '',
+    created_at integer not null,
+    last_used_at integer not null
+);
+create index api_tokens_user on api_tokens(user_id);
+
+create table address_books (
+    id integer primary key,
+    guid text not null unique,
+    name text not null,
+    note text not null default '',
+    owner_id integer not null references users(id) on delete cascade,
+    personal integer not null default 0,
+    created_at integer not null
+);
+create unique index address_books_personal on address_books(owner_id) where personal = 1;
+create unique index address_books_shared_name on address_books(name collate nocase) where personal = 0;
+
+create table ab_members (
+    ab_id integer not null references address_books(id) on delete cascade,
+    user_id integer not null references users(id) on delete cascade,
+    rule integer not null check (rule in (1, 2, 3)),
+    primary key (ab_id, user_id)
+);
+
+create table ab_peers (
+    ab_id integer not null references address_books(id) on delete cascade,
+    peer_id text not null,
+    data text not null,
+    primary key (ab_id, peer_id)
+);
+
+create table ab_tags (
+    ab_id integer not null references address_books(id) on delete cascade,
+    name text not null,
+    color integer not null,
+    primary key (ab_id, name)
+);
+
+alter table devices add column user_id integer references users(id) on delete set null;
+"#,
+];
 
 pub async fn open(path: &str) -> anyhow::Result<SqlitePool> {
     let options = SqliteConnectOptions::from_str(&format!("sqlite://{path}"))?

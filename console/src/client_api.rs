@@ -64,7 +64,7 @@ fn clip(s: String, max: usize) -> String {
 /// Darf dieses Gerät Daten melden? Mit hbbs-Datenbank muss die UUID dort
 /// registriert sein. Ohne gilt die UUID, mit der sich das Gerät zuerst gemeldet
 /// hat, damit kein anderer Client dessen Eintrag übernehmen kann.
-async fn authorized(state: &AppState, id: &str, uuid: &str) -> ApiResult<bool> {
+pub(crate) async fn authorized(state: &AppState, id: &str, uuid: &str) -> ApiResult<bool> {
     if let Some(hbbs) = &state.hbbs {
         return Ok(hbbs.is_registered(id, uuid).await?);
     }

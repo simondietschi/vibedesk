@@ -1,10 +1,13 @@
 //! VibeDesk-Konsole: Verwaltung von Benutzern und Geräten für einen VibeDesk-Server.
 //!
-//! Die Konsole beantwortet auf Port 21114 die Heartbeats der Clients
-//! (`/api/heartbeat`, `/api/sysinfo`) und liefert unter `/` die
+//! Die Konsole beantwortet auf Port 21114 die Anfragen der Clients unter
+//! `/api` (Heartbeats, Anmeldung, Adressbücher) und liefert unter `/` die
 //! Weboberfläche mit ihrer API unter `/admin/api`.
 
+pub mod account;
+pub mod addressbook;
 pub mod admin;
+pub mod admin_books;
 pub mod auth;
 pub mod client_api;
 pub mod db;
@@ -37,6 +40,7 @@ pub struct AppState {
     pub hbbs: Option<hbbs::HbbsDb>,
     pub settings: Settings,
     pub limiter: Arc<auth::LoginLimiter>,
+    pub challenges: Arc<account::Challenges>,
 }
 
 impl AppState {
@@ -46,6 +50,7 @@ impl AppState {
             hbbs,
             settings,
             limiter: Arc::new(auth::LoginLimiter::default()),
+            challenges: Arc::new(account::Challenges::default()),
         }
     }
 }
@@ -53,6 +58,8 @@ impl AppState {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(client_api::router())
+        .merge(account::router())
+        .merge(addressbook::router())
         .nest("/admin/api", admin::router(state.clone()))
         .merge(web::router())
         .with_state(state)
