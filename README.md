@@ -85,12 +85,17 @@ nichts konfiguriert werden:
 ```sh
 export VIBEDESK_RENDEZVOUS_SERVER=desk.example.ch
 export VIBEDESK_RS_PUB_KEY="$(cat /pfad/zu/id_ed25519.pub)"
+export VIBEDESK_API_SERVER=https://konsole.example.ch   # optional
 cargo build --release --features flutter
 ```
 
 Ohne diese Variablen trägt man Server und Schlüssel im Client unter
-Einstellungen, Netzwerk, ID/Relay-Server ein. Der API-Server wird automatisch
-als `http://<server>:21114` abgeleitet.
+Einstellungen, Netzwerk, ID/Relay-Server ein. Der API-Server, über den die
+Anmeldung und die Adressbücher laufen, wird ohne `VIBEDESK_API_SERVER`
+automatisch als `http://<server>:21114` abgeleitet. Das ist unverschlüsselt.
+Läuft die Konsole hinter HTTPS (siehe `deploy/README.md`), gehört deren
+Adresse in `VIBEDESK_API_SERVER`. Ein im Client eingetragener API-Server hat
+weiterhin Vorrang.
 
 ## Eigene Builds per GitHub Actions
 
@@ -110,6 +115,7 @@ Server und Schlüssel einmalig als Repository-Variablen hinterlegen
 
 - `VIBEDESK_RENDEZVOUS_SERVER`, z.B. `desk.example.ch`
 - `VIBEDESK_RS_PUB_KEY`, Inhalt von `id_ed25519.pub` des Servers
+- `VIBEDESK_API_SERVER`, optional, z.B. `https://konsole.example.ch`
 
 Starten lässt sich der Build unter Actions, «VibeDesk Build», «Run workflow».
 Dort kann man Server und Schlüssel für einen einzelnen Lauf auch direkt
