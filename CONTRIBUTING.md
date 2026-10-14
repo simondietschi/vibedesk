@@ -52,4 +52,4 @@ Diese Einstellungen kann nur der Repo-Inhaber setzen:
   einschalten
 - **Settings, Rules, Rulesets:** für `main` eine Regel anlegen mit
   «Restrict deletions», «Block force pushes», «Require a pull request
-  before merging» und «Require status checks to pass»
+  before merging» und «Require status checks to pass» mit dem Check `CI`
