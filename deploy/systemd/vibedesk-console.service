@@ -1,0 +1,31 @@
+[Unit]
+Description=VibeDesk-Konsole
+Documentation=https://github.com/simondietschi/vibedesk
+After=network-online.target vibedesk-hbbs.service
+Wants=network-online.target
+
+[Service]
+User=vibedesk
+Group=vibedesk
+WorkingDirectory=/var/lib/vibedesk
+Environment=VIBEDESK_CONSOLE_DB=/var/lib/vibedesk/console.sqlite3
+Environment=VIBEDESK_HBBS_DB=/var/lib/vibedesk/db_v2.sqlite3
+# Hinter einem HTTPS-Proxy (siehe README.md):
+# Environment=VIBEDESK_CONSOLE_LISTEN=127.0.0.1:21180
+# Environment=VIBEDESK_CONSOLE_SECURE_COOKIES=true
+# Environment=VIBEDESK_CONSOLE_TRUST_PROXY=true
+ExecStart=/usr/local/bin/vibedesk-console
+Restart=on-failure
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/var/lib/vibedesk
+
+[Install]
+WantedBy=multi-user.target

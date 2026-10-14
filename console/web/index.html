@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>VibeDesk Konsole</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main id="login" class="login" hidden>
+    <form id="login-form" class="card login-card">
+      <h1>VibeDesk Konsole</h1>
+      <label>Benutzername
+        <input name="username" autocomplete="username" required autofocus>
+      </label>
+      <label>Passwort
+        <input name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <label id="login-code" hidden>Bestätigungscode aus der Authenticator-App
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="7">
+      </label>
+      <p class="error" role="alert"></p>
+      <button class="primary" type="submit">Anmelden</button>
+    </form>
+  </main>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <span class="brand">VibeDesk Konsole</span>
+      <nav>
+        <a href="#geraete" data-view="devices">Geräte</a>
+        <a href="#benutzer" data-view="users" data-admin>Benutzer</a>
+        <a href="#konto" data-view="account">Mein Konto</a>
+      </nav>
+      <span class="whoami"></span>
+      <button id="logout" class="link">Abmelden</button>
+    </header>
+
+    <section id="view-devices" class="view" hidden>
+      <div class="toolbar">
+        <h2>Geräte</h2>
+        <span class="muted" id="device-summary"></span>
+        <input id="device-filter" type="search" placeholder="Suchen nach ID, Name, Benutzer, Notiz">
+      </div>
+      <p class="hint" id="device-hint" hidden></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Status</th><th>ID</th><th>Name</th><th>Benutzer</th><th>System</th><th>Version</th><th>Zuletzt gesehen</th><th>Notiz</th><th></th></tr>
+          </thead>
+          <tbody id="device-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-users" class="view" hidden>
+      <div class="toolbar">
+        <h2>Benutzer</h2>
+        <button id="user-new" class="primary">Benutzer anlegen</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Benutzername</th><th>Name</th><th>Rolle</th><th>Status</th><th>Zwei-Faktor</th><th>Letzte Anmeldung</th><th></th></tr>
+          </thead>
+          <tbody id="user-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-account" class="view" hidden>
+      <h2>Mein Konto</h2>
+      <div class="grid">
+        <form id="password-form" class="card">
+          <h3>Passwort ändern</h3>
+          <label>Aktuelles Passwort
+            <input name="current_password" type="password" autocomplete="current-password" required>
+          </label>
+          <label>Neues Passwort (mindestens 10 Zeichen)
+            <input name="new_password" type="password" autocomplete="new-password" minlength="10" required>
+          </label>
+          <label>Neues Passwort wiederholen
+            <input name="repeat" type="password" autocomplete="new-password" minlength="10" required>
+          </label>
+          <p class="error" role="alert"></p>
+          <button class="primary" type="submit">Passwort ändern</button>
+        </form>
+
+        <div class="card">
+          <h3>Zwei-Faktor-Anmeldung</h3>
+          <p id="totp-status"></p>
+
+          <form id="totp-start" hidden>
+            <p>Mit einer Authenticator-App (z.B. Google Authenticator, Microsoft Authenticator, 2FAS) braucht die Anmeldung zusätzlich einen Code vom Telefon.</p>
+            <label>Passwort zur Bestätigung
+              <input name="password" type="password" autocomplete="current-password" required>
+            </label>
+            <p class="error" role="alert"></p>
+            <button class="primary" type="submit">Einrichten</button>
+          </form>
+
+          <form id="totp-confirm" hidden>
+            <p>QR-Code mit der App scannen oder den Schlüssel von Hand eingeben.</p>
+            <img id="totp-qr" alt="QR-Code für die Authenticator-App" width="200" height="200">
+            <p><code id="totp-secret"></code></p>
+            <label>Code aus der App
+              <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required>
+            </label>
+            <p class="error" role="alert"></p>
+            <button class="primary" type="submit">Aktivieren</button>
+          </form>
+
+          <form id="totp-off" hidden>
+            <label>Passwort
+              <input name="password" type="password" autocomplete="current-password" required>
+            </label>
+            <label>Code aus der App
+              <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required>
+            </label>
+            <p class="error" role="alert"></p>
+            <button class="danger" type="submit">Ausschalten</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <dialog id="dialog">
+    <form method="dialog" id="dialog-form">
+      <h3 id="dialog-title"></h3>
+      <div id="dialog-body"></div>
+      <p class="error" role="alert"></p>
+      <div class="actions">
+        <button value="cancel" formnovalidate id="dialog-cancel">Abbrechen</button>
+        <button value="ok" class="primary" id="dialog-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

@@ -2,6 +2,7 @@
 #
 #   docker compose up -d
 #   cat data/id_ed25519.pub   # öffentlicher Schlüssel für den Client
+#   docker compose exec console vibedesk-console create-admin <name>
 #
 # Host-Netzwerk, damit hbbs die echten IP-Adressen der Geräte sieht. Ohne
 # diese erkennt er NAT-Typen falsch und vermittelt seltener direkte
@@ -27,4 +28,23 @@ services:
     network_mode: host
     volumes:
       - ./data:/data
+    restart: unless-stopped
+
+  # Verwaltungskonsole auf Port 21114. Liest die Geräte von hbbs aus
+  # /data/db_v2.sqlite3, schreibt aber nur in die eigene Datenbank.
+  console:
+    image: ghcr.io/simondietschi/vibedesk-server:latest
+    command: ["vibedesk-console"]
+    network_mode: host
+    environment:
+      VIBEDESK_CONSOLE_DB: /data/console.sqlite3
+      VIBEDESK_HBBS_DB: /data/db_v2.sqlite3
+      # Hinter einem HTTPS-Proxy (siehe deploy/README.md):
+      # VIBEDESK_CONSOLE_LISTEN: 127.0.0.1:21180
+      # VIBEDESK_CONSOLE_SECURE_COOKIES: "true"
+      # VIBEDESK_CONSOLE_TRUST_PROXY: "true"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - hbbs
     restart: unless-stopped
