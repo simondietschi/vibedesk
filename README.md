@@ -39,6 +39,11 @@ Heartbeats hinschicken, und bietet:
 - Geräteübersicht mit Online-Status, Gerätename, Benutzer, System und Notizen
 - Benutzerverwaltung mit den Rollen Admin und Benutzer
 - Anmeldung mit Passwort und optionaler Zwei-Faktor-Anmeldung (TOTP)
+- Anmeldung im Client mit persönlichem und geteilten Adressbüchern
+
+Der Client bringt Anmeldung und Adressbuch bereits mit. Die Konsole bietet
+dafür die Schnittstelle an, die er erwartet, der Client selbst ist dafür
+unverändert.
 
 Installation und HTTPS-Einrichtung: [`deploy/README.md`](deploy/README.md#konsole).
 Entwickeln: `cd console && cargo run -- create-admin admin && cargo run`.

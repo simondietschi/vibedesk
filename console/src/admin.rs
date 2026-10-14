@@ -7,13 +7,14 @@ use axum::{
     http::{header, HeaderMap, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, patch, post},
+    routing::{get, patch, post, put},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
+    admin_books,
     auth::{
         self, burn_password_check, check_password_policy, hash_password, verify_password, Admin,
         ClientIp, CurrentUser, LoginLimiter,
@@ -43,6 +44,19 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/users/{id}/reset-2fa", post(reset_totp))
         .route("/devices", get(list_devices))
         .route("/devices/{id}", patch(update_device).delete(delete_device))
+        .route(
+            "/address-books",
+            get(admin_books::list).post(admin_books::create),
+        )
+        .route(
+            "/address-books/{guid}",
+            patch(admin_books::update).delete(admin_books::remove),
+        )
+        .route("/address-books/{guid}/peers", get(admin_books::peers))
+        .route(
+            "/address-books/{guid}/members/{user_id}",
+            put(admin_books::set_member).delete(admin_books::remove_member),
+        )
         .layer(middleware::from_fn_with_state(state, csrf_guard))
 }
 
@@ -511,6 +525,10 @@ async fn update_user(
                 .bind(id)
                 .execute(&mut *tx)
                 .await?;
+            sqlx::query("delete from api_tokens where user_id = ?")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
         }
     }
     tx.commit().await?;
@@ -534,16 +552,35 @@ async fn delete_user(
             "Es muss mindestens ein aktiver Admin bleiben",
         ));
     }
+    let mut tx = state.db.begin().await?;
+    // Geteilte Adressbücher gehen an den löschenden Admin, statt mit dem
+    // Konto zu verschwinden.
+    sqlx::query("update address_books set owner_id = ? where owner_id = ? and personal = 0")
+        .bind(admin.id)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("delete from ab_members where user_id = ? and ab_id in (select id from address_books where owner_id = ?)")
+        .bind(admin.id)
+        .bind(admin.id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("delete from users where id = ?")
         .bind(id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     tracing::info!("{} hat Benutzer {} gelöscht", admin.username, user.username);
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Beendet alle Sitzungen der Konsole und alle Anmeldungen im Client.
 async fn revoke_sessions(state: &AppState, user_id: i64) -> ApiResult<()> {
     sqlx::query("delete from sessions where user_id = ?")
+        .bind(user_id)
+        .execute(&state.db)
+        .await?;
+    sqlx::query("delete from api_tokens where user_id = ?")
         .bind(user_id)
         .execute(&state.db)
         .await?;
@@ -623,6 +660,8 @@ struct DeviceView {
     memory: String,
     note: String,
     ip: String,
+    /// Konto, mit dem der Client auf diesem Gerät angemeldet ist.
+    account: String,
     online: bool,
     first_seen_at: Option<i64>,
     last_seen_at: Option<i64>,
@@ -643,12 +682,14 @@ struct DeviceRow {
     note: String,
     first_seen_at: Option<i64>,
     last_seen_at: Option<i64>,
+    account: Option<String>,
 }
 
 async fn list_devices(State(state): State<AppState>, _: Admin) -> ApiResult<Json<Vec<DeviceView>>> {
     let rows: Vec<DeviceRow> = sqlx::query_as(
-        "select id, hostname, username, os, version, cpu, memory, note, first_seen_at, last_seen_at
-         from devices",
+        "select d.id, d.hostname, d.username, d.os, d.version, d.cpu, d.memory, d.note,
+                d.first_seen_at, d.last_seen_at, u.username as account
+         from devices d left join users u on u.id = d.user_id",
     )
     .fetch_all(&state.db)
     .await?;
@@ -670,6 +711,7 @@ async fn list_devices(State(state): State<AppState>, _: Admin) -> ApiResult<Json
                 note: r.note,
                 first_seen_at: r.first_seen_at,
                 last_seen_at: r.last_seen_at,
+                account: r.account.unwrap_or_default(),
                 ..Default::default()
             };
             (r.id, view)

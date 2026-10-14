@@ -106,10 +106,37 @@ Die Konsole ist unter `http://<server>:21114` erreichbar. Sie zeigt:
   dem ID-Server ab.
 - **Benutzer:** Konten anlegen, sperren, löschen, Passwort und Zwei-Faktor
   zurücksetzen. Rolle «Admin» darf alles, Rolle «Benutzer» nur das eigene
-  Konto verwalten. Die Benutzer werden ab der nächsten Etappe für das
-  Adressbuch im Client gebraucht.
+  Konto verwalten. Sperren, Löschen und Passwort zurücksetzen melden das
+  Konto auch in allen Clients ab.
+- **Adressbücher:** geteilte Adressbücher anlegen und Benutzern zuweisen,
+  mit den Rechten «Lesen», «Lesen und schreiben» oder «Volle Kontrolle».
 - **Mein Konto:** Passwort ändern, Zwei-Faktor-Anmeldung mit einer
   Authenticator-App einrichten.
+
+### Anmeldung im Client
+
+Mit einem Konto der Konsole meldet man sich im Client an (Symbol oben
+rechts, «Anmelden»). Ist Zwei-Faktor eingerichtet, fragt der Client nach dem
+Code der Authenticator-App. Danach hat der Client:
+
+- **Adressbuch:** das persönliche Adressbuch des Benutzers und alle geteilten
+  Adressbücher, in denen er Mitglied ist. Einträge, Aliasse, Notizen und Tags
+  werden auf dem Server gespeichert und auf allen Geräten des Benutzers
+  synchronisiert. Im persönlichen Adressbuch merkt sich der Client
+  gespeicherte Verbindungspasswörter (als Hash), in geteilten Adressbüchern
+  kann ein gemeinsames Passwort pro Eintrag hinterlegt werden. Dieses liegt
+  im Klartext in der Datenbank der Konsole.
+- **Geräte:** die Geräte, auf denen der Benutzer angemeldet ist. Admins
+  sehen alle Geräte, gruppiert nach Benutzer.
+
+Die Konsole zeigt in der Geräteliste, welches Konto auf welchem Gerät
+angemeldet ist. Eine Anmeldung im Client verfällt nach 90 Tagen ohne Nutzung.
+
+**Wichtig:** Ohne weitere Einstellung schickt der Client das Passwort über
+`http://<server>:21114`, also unverschlüsselt. Für den Betrieb über das
+Internet die Konsole hinter HTTPS stellen (siehe unten) und im Client unter
+Einstellungen, Netzwerk als API-Server `https://konsole.example.ch`
+eintragen.
 
 Die Konsole prüft jeden Heartbeat gegen die Gerätedatenbank von hbbs: Nur
 ein Gerät, dessen ID und interne UUID dort registriert sind, kann Daten
