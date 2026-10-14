@@ -77,3 +77,7 @@ panic = 'abort'
 strip = true
 #opt-level = 'z' # only have smaller size after strip # Default is 3, better performance
 #rpath = true # Not needed
+
+# VibeDesk: Statische musl-Builds bringen ihr eigenes OpenSSL mit.
+[target.'cfg(target_env = "musl")'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
