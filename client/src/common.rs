@@ -1247,6 +1247,10 @@ fn get_api_server_(api: String, custom: String) -> String {
     if !api.is_empty() {
         return api.to_owned();
     }
+    // VibeDesk: beim Build fest eingebauter API-Server, z.B. https://konsole.example.ch
+    if let Some(builtin) = option_env!("VIBEDESK_API_SERVER").filter(|s| !s.is_empty()) {
+        return builtin.to_owned();
+    }
     let mut s0 = get_custom_rendezvous_server(custom);
     if s0.is_empty() {
         s0 = config::RENDEZVOUS_SERVERS[0].to_owned();
