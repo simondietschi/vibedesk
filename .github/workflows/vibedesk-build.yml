@@ -226,6 +226,12 @@ jobs:
       - name: Paket prüfen
         run: |
           deb=$(ls vibedesk-*.deb | head -n 1)
+          # Alle Dateien müssen root gehören, sonst könnte ein lokaler Benutzer das Programm
+          # austauschen, das der Dienst als root startet.
+          if dpkg-deb -c "$deb" | awk '{print $2}' | grep -v '^root/root$'; then
+            echo "Dateien im deb gehören nicht root"
+            exit 1
+          fi
           dpkg-deb -c "$deb" | awk '{print $6}' > files.txt
           for f in ./usr/share/vibedesk/vibedesk ./usr/share/vibedesk/lib/libvibedesk.so \
                    ./usr/share/vibedesk/files/systemd/vibedesk.service \
@@ -239,24 +245,27 @@ jobs:
           fi
           rm files.txt
 
-      # Paket für Arch Linux aus demselben Build. makepkg läuft nicht als root,
-      # darum ein Benutzer mit der UID des Runners. Danach wird das Paket in
-      # einem frischen Arch installiert und auf fehlende Bibliotheken geprüft.
-      - name: Arch-Paket bauen und prüfen
+      # AUR-fertiges PKGBUILD (vibedesk-bin), das das deb dieses Builds aus dem
+      # Release umpackt. makepkg nimmt das deb aus dem Ordner statt es
+      # herunterzuladen und prüft dabei die eingesetzte Prüfsumme.
+      - name: AUR-PKGBUILD vibedesk-bin erstellen und prüfen
+        env:
+          TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
-          sed -i "s/^pkgver=.*/pkgver=${version}/" res/PKGBUILD
-          docker run --rm -v "$PWD:/src" -e HOST_UID="$(id -u)" archlinux:base-devel bash -euc '
-            useradd -m -u "$HOST_UID" builder
-            su builder -c "cd /src/res && HBB=/src FLUTTER=1 makepkg -f --nodeps"
-            pacman -Syu --noconfirm
-            pacman -U --noconfirm /src/res/vibedesk-*.pkg.tar.zst || true
-            pacman -Q vibedesk
-            missing=$(LD_LIBRARY_PATH=/usr/share/vibedesk/lib ldd /usr/share/vibedesk/vibedesk /usr/share/vibedesk/lib/*.so | grep "not found" | sort -u || true)
-            if [ -n "$missing" ]; then echo "Fehlende Bibliotheken:"; echo "$missing"; exit 1; fi
-          '
-          mv res/vibedesk-*.pkg.tar.zst "vibedesk-${version}-x86_64.pkg.tar.zst"
-          ls -l vibedesk-*.pkg.tar.zst
+          case "$TAG" in v*) tag="$TAG" ;; *) tag="v${version}" ;; esac
+          deb="vibedesk-${version}-x86_64.deb"
+          sum=$(sha256sum "$deb" | cut -d' ' -f1)
+          mkdir aur-bin
+          cp res/aur/vibedesk-bin/PKGBUILD res/aur/vibedesk-bin/vibedesk-bin.install "$deb" aur-bin/
+          sed -i -e "s/^pkgver=.*/pkgver=${version}/" -e "s/^_tag=.*/_tag=\"${tag}\"/" \
+            -e "s/@DEB_SHA256@/${sum}/" aur-bin/PKGBUILD
+          docker run --rm -v "$PWD/aur-bin:/aur" -v "$PWD/res/aur/check-in-arch.sh:/check.sh:ro" \
+            -e HOST_UID="$(id -u)" archlinux:base-devel bash /check.sh /aur
+          tar -czf "vibedesk-bin-${version}-aur.tar.gz" -C aur-bin PKGBUILD .SRCINFO vibedesk-bin.install
+          # Das fertige Arch-Paket kommt aus demselben PKGBUILD wie im AUR, damit es
+          # sich später ohne Konflikte durch vibedesk oder vibedesk-bin ersetzen lässt.
+          mv aur-bin/vibedesk-bin-*.pkg.tar.zst "vibedesk-bin-${version}-x86_64.pkg.tar.zst"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -264,6 +273,68 @@ jobs:
           path: |
             client/vibedesk-*.deb
             client/vibedesk-*.pkg.tar.zst
+            client/vibedesk-bin-*-aur.tar.gz
+          if-no-files-found: error
+
+  arch-source:
+    name: Arch-Quellpaket
+    needs: bridge
+    if: github.event_name == 'push' || inputs.linux
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Platz schaffen
+        working-directory: .
+        run: |
+          sudo rm -rf /opt/ghc /usr/local/lib/android /usr/share/dotnet
+          df -h /
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bridge
+          path: client
+
+      # AUR-fertiges PKGBUILD (vibedesk), das den Client aus dem Quellcode baut.
+      # Der Quellcode-Tarball enthält den Bridge-Code aus dem Job «bridge», denn
+      # ffigen erzeugt mit dem Clang von Arch falsche Typen. Er kommt mit in den
+      # Release; makepkg nimmt ihn hier aus dem Ordner und prüft die Prüfsumme.
+      - name: AUR-PKGBUILD vibedesk aus dem Quellcode bauen und prüfen
+        env:
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          case "$TAG" in v*) tag="$TAG" ;; *) tag="v${version}" ;; esac
+          src="vibedesk-${version}-src.tar.gz"
+          stage="$RUNNER_TEMP/src"
+          mkdir -p "$stage"
+          git -C .. archive --prefix="vibedesk-${version}/" HEAD client | tar -x -C "$stage"
+          for f in src/bridge_generated.rs src/bridge_generated.io.rs \
+                   flutter/lib/generated_bridge.dart flutter/lib/generated_bridge.freezed.dart; do
+            install -Dm644 "$f" "$stage/vibedesk-${version}/client/$f"
+          done
+          tar -czf "$src" -C "$stage" --sort=name --owner=0 --group=0 --numeric-owner \
+            --mtime="@$(git log -1 --format=%ct)" "vibedesk-${version}"
+          sum=$(sha256sum "$src" | cut -d' ' -f1)
+          mkdir aur-src
+          cp res/aur/vibedesk/PKGBUILD res/aur/vibedesk/vibedesk.install "$src" aur-src/
+          sed -i -e "s/^pkgver=.*/pkgver=${version}/" -e "s/^_tag=.*/_tag=\"${tag}\"/" \
+            -e "s/@SRC_SHA256@/${sum}/" aur-src/PKGBUILD
+          docker run --rm -v "$PWD/aur-src:/aur" -v "$PWD/res/aur/check-in-arch.sh:/check.sh:ro" \
+            -e HOST_UID="$(id -u)" archlinux:base-devel bash /check.sh /aur
+          tar -czf "vibedesk-${version}-aur.tar.gz" -C aur-src PKGBUILD .SRCINFO vibedesk.install
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vibedesk-arch-source
+          path: |
+            client/vibedesk-*-src.tar.gz
+            client/vibedesk-*-aur.tar.gz
           if-no-files-found: error
 
   topmost:
@@ -849,7 +920,7 @@ jobs:
 
   release:
     name: Release-Entwurf erstellen
-    needs: [linux, windows, android, macos, ios]
+    needs: [linux, arch-source, windows, android, macos, ios]
     # Läuft auch, wenn einzelne Plattformen abgewählt wurden, aber nie nach einem Fehler.
     if: >-
       !cancelled() && !failure() &&
@@ -866,6 +937,19 @@ jobs:
 
       - name: Prüfsummen erstellen
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      # Ein zweiter Lauf mit demselben Tag würde die Assets ersetzen. Bei einem schon
+      # veröffentlichten Release passen dann die Prüfsummen im AUR nicht mehr.
+      - name: Nicht in einen veröffentlichten Release hochladen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          if [ "$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null)" = "false" ]; then
+            echo "::error::Release $TAG ist schon veröffentlicht, die Assets würden ersetzt"
+            exit 1
+          fi
 
       # Als Entwurf, damit ein Release erst nach Durchsicht öffentlich wird.
       - uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1

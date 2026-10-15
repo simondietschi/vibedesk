@@ -780,7 +780,7 @@ def build_flutter_deb(version, features):
         retarget_control_to_drm_variant()
     system2('cp -a ../res/DEBIAN/* tmpdeb/DEBIAN/')
     md5_file_folder("tmpdeb/")
-    system2('dpkg-deb -b tmpdeb vibedesk.deb;')
+    system2('dpkg-deb --root-owner-group -b tmpdeb vibedesk.deb;')
 
     system2('/bin/rm -rf tmpdeb/')
     system2('/bin/rm -rf ../res/DEBIAN/control')
@@ -921,7 +921,7 @@ def build_deb_from_folder(version, binary_folder, want_drm=False):
         retarget_control_to_drm_variant()
     system2('cp -a ../res/DEBIAN/* tmpdeb/DEBIAN/')
     md5_file_folder("tmpdeb/")
-    system2('dpkg-deb -b tmpdeb vibedesk.deb;')
+    system2('dpkg-deb --root-owner-group -b tmpdeb vibedesk.deb;')
 
     system2('/bin/rm -rf tmpdeb/')
     system2('/bin/rm -rf ../res/DEBIAN/control')
@@ -1170,7 +1170,7 @@ def main():
                 system2('mv tmpdeb/usr/bin/vibedesk tmpdeb/usr/share/vibedesk/')
                 system2('cp libsciter-gtk.so tmpdeb/usr/share/vibedesk/')
                 md5_file_folder("tmpdeb/")
-                system2('dpkg-deb -b tmpdeb vibedesk.deb; /bin/rm -rf tmpdeb/')
+                system2('dpkg-deb --root-owner-group -b tmpdeb vibedesk.deb; /bin/rm -rf tmpdeb/')
                 os.rename('vibedesk.deb', 'vibedesk-%s.deb' % version)
 
 
