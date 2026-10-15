@@ -252,7 +252,7 @@ jobs:
             pacman -Syu --noconfirm
             pacman -U --noconfirm /src/res/vibedesk-*.pkg.tar.zst || true
             pacman -Q vibedesk
-            missing=$(ldd /usr/share/vibedesk/vibedesk /usr/share/vibedesk/lib/*.so | grep "not found" | sort -u || true)
+            missing=$(LD_LIBRARY_PATH=/usr/share/vibedesk/lib ldd /usr/share/vibedesk/vibedesk /usr/share/vibedesk/lib/*.so | grep "not found" | sort -u || true)
             if [ -n "$missing" ]; then echo "Fehlende Bibliotheken:"; echo "$missing"; exit 1; fi
           '
           mv res/vibedesk-*.pkg.tar.zst "vibedesk-${version}-x86_64.pkg.tar.zst"
