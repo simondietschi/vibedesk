@@ -65,6 +65,8 @@ prepare() {
 build() {
   _env
   export CARGO_NET_OFFLINE=true
+  # libwebm in webm-sys relies on <cstdint> being pulled in implicitly, which GCC 15 no longer does.
+  export CXXFLAGS="${CXXFLAGS} -include cstdint"
   cd "${pkgname}-${pkgver}/client"
 
   flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
