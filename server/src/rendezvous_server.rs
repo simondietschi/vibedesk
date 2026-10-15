@@ -547,6 +547,9 @@ impl RendezvousServer {
                         log::info!("VibeDesk: Relay von {} zu {} abgelehnt", addr, rf.id);
                         return true;
                     }
+                    // VibeDesk: Das Zielgerät braucht das Anmelde-Token nicht und bekäme
+                    // es sonst unverschlüsselt per UDP.
+                    rf.token.clear();
                     if let Some(peer) = self.pm.get_in_memory(&rf.id).await {
                         let mut msg_out = RendezvousMessage::new();
                         rf.socket_addr = AddrMangle::encode(addr).into();
@@ -1463,5 +1466,51 @@ mod tests {
             assert_eq!(lock.front().unwrap().to_id, format!("peer{}", max % 31));
             assert_eq!(lock.back().unwrap().to_id, format!("peer{}", (max * 2 - 1) % 31));
         }
+    }
+
+    #[hbb_common::tokio::test]
+    async fn relay_request_reaches_target_without_token() {
+        let dir = std::env::temp_dir().join(format!("vibedesk-relay-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("DB_URL", dir.join("db_v2.sqlite3"));
+        let pm = PeerMap::new().await.unwrap();
+        let target: SocketAddr = "10.0.0.2:21116".parse().unwrap();
+        pm.get_or("target").await.write().await.socket_addr = target;
+        let (tx, mut rx) = mpsc::unbounded_channel::<Data>();
+        let mut rs = RendezvousServer {
+            tcp_punch: Default::default(),
+            pm,
+            tx,
+            relay_servers: Default::default(),
+            relay_servers0: Default::default(),
+            rendezvous_servers: Default::default(),
+            inner: Arc::new(Inner {
+                serial: 0,
+                version: String::new(),
+                software_url: String::new(),
+                mask: None,
+                local_ip: String::new(),
+                sk: None,
+            }),
+        };
+        let mut msg = RendezvousMessage::new();
+        msg.set_request_relay(RequestRelay {
+            id: "target".to_owned(),
+            uuid: "uuid".to_owned(),
+            token: "anmelde-token".to_owned(),
+            ..Default::default()
+        });
+        let from: SocketAddr = "10.0.0.1:50000".parse().unwrap();
+        let bytes = msg.write_to_bytes().unwrap();
+        assert!(rs.handle_tcp(&bytes, &mut None, from, "", false).await);
+        std::fs::remove_dir_all(&dir).ok();
+        let Ok(Data::Msg(out, to)) = rx.try_recv() else {
+            panic!("Relay-Anfrage wurde nicht weitergeleitet");
+        };
+        assert_eq!(to, target);
+        let rf = out.request_relay();
+        assert_eq!(rf.uuid, "uuid");
+        assert_eq!(AddrMangle::decode(&rf.socket_addr), from);
+        assert!(rf.token.is_empty());
     }
 }
