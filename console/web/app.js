@@ -177,12 +177,12 @@ async function showApp() {
 
 function route() {
   if (!me) return;
-  const views = { "#geraete": "devices", "#benutzer": "users", "#adressbuecher": "books", "#konto": "account" };
+  const views = { "#geraete": "devices", "#benutzer": "users", "#adressbuecher": "books", "#protokoll": "logs", "#konto": "account" };
   let view = views[location.hash] || (me.role === "admin" ? "devices" : "account");
   if (me.role !== "admin" && view !== "account") view = "account";
   for (const v of $$(".view")) v.hidden = v.id !== "view-" + view;
   for (const a of $$("nav a")) a.classList.toggle("active", a.dataset.view === view);
-  ({ devices: loadDevices, users: loadUsers, books: loadBooks, account: loadAccount })[view]();
+  ({ devices: loadDevices, users: loadUsers, books: loadBooks, logs: () => loadLogs(false), account: loadAccount })[view]();
 }
 
 // ----------------------------------------------------------------- Geräte
@@ -479,6 +479,111 @@ async function showBookPeers(b) {
   await dialog({ title: `Einträge in ${b.name}`, text: [table], cancel: false });
 }
 
+// ------------------------------------------------------------- Protokoll
+
+const LOG_PAGE = 100;
+const connTypes = ["Fernsteuerung", "Dateiübertragung", "Port-Weiterleitung", "Kamera", "Terminal"];
+const primaryAuth = { 1: "Klick", 2: "Einmalpasswort", 3: "festes Passwort", 4: "Seitenwechsel" };
+const twoFactor = { 1: "TOTP", 2: "vertrautes Gerät" };
+const alarmTypes = {
+  0: "IP nicht auf Freigabeliste",
+  1: "Mehr als 30 Fehlversuche",
+  2: "6 Fehlversuche in einer Minute",
+  6: "Zu viele Versuche aus einem IPv6-Netz",
+  7: "Terminal-Anmeldung gebremst",
+  8: "Zu viele Terminal-Anmeldungen gleichzeitig",
+  9: "Unerlaubte Aktion in der Sitzung",
+  10: "ID nicht auf Freigabeliste",
+};
+let logKind = "verbindungen";
+let logItems = [];
+
+function duration(secs) {
+  if (secs < 60) return `${secs} s`;
+  if (secs < 3600) return `${Math.round(secs / 60)} Min.`;
+  return `${Math.floor(secs / 3600)} Std. ${Math.round((secs % 3600) / 60)} Min.`;
+}
+
+function deviceCell(l) {
+  return h("td", {}, l.hostname || "", h("div", { class: "mono muted small" }, l.device_id));
+}
+
+function peerCell(l) {
+  return h("td", {}, l.peer_name || "", h("div", { class: "mono muted small" }, l.peer_id || ""));
+}
+
+const logViews = {
+  verbindungen: {
+    head: ["Beginn", "Dauer", "Gerät", "Von", "IP", "Art", "Anmeldung", "Notiz"],
+    hint: "Jede Verbindung auf ein Gerät, gemeldet vom gesteuerten Gerät.",
+    row: (l) => {
+      const end = l.ended_at ? duration(l.ended_at - l.started_at) : h("span", { class: "muted" }, "offen");
+      const auth = [primaryAuth[l.primary_auth], twoFactor[l.two_factor]].filter(Boolean).join(" + ");
+      return h("tr", {},
+        h("td", {}, formatDate(l.started_at)),
+        h("td", {}, end),
+        deviceCell(l), peerCell(l),
+        h("td", { class: "mono" }, l.ip),
+        h("td", {}, l.conn_type == null ? h("span", { class: "muted" }, "nicht angemeldet") : connTypes[l.conn_type] || `Typ ${l.conn_type}`),
+        h("td", {}, auth),
+        h("td", { class: "clip note", title: l.note }, l.note));
+    },
+  },
+  dateien: {
+    head: ["Zeit", "Gerät", "Von", "Richtung", "Pfad", "Dateien"],
+    hint: "Dateiübertragungen und kopierte Dateien, gemeldet vom gesteuerten Gerät.",
+    row: (l) => {
+      let files = [];
+      try { files = JSON.parse(l.files); } catch (_) { /* leer lassen */ }
+      const names = files.map((f) => f[0]).filter(Boolean).join(", ");
+      return h("tr", {},
+        h("td", {}, formatDate(l.created_at)),
+        deviceCell(l), peerCell(l),
+        h("td", {}, l.direction === 0 ? "vom Gerät geholt" : "auf das Gerät kopiert"),
+        h("td", { class: "clip mono", title: l.path }, l.path),
+        h("td", { class: "clip", title: names }, `${l.num}${names ? ": " + names : ""}`));
+    },
+  },
+  alarme: {
+    head: ["Zeit", "Gerät", "Alarm", "Von", "IP"],
+    hint: "Warnungen der Geräte, etwa bei vielen falschen Passwörtern.",
+    row: (l) => h("tr", {},
+      h("td", {}, formatDate(l.created_at)),
+      deviceCell(l),
+      h("td", { title: l.info }, alarmTypes[l.typ] || `Alarm ${l.typ}`),
+      peerCell(l),
+      h("td", { class: "mono" }, l.ip)),
+  },
+  konsole: {
+    head: ["Zeit", "Konto", "Aktion", "Details", "IP"],
+    hint: "Anmeldungen und Änderungen in der Konsole und Anmeldungen im Client.",
+    row: (l) => h("tr", {},
+      h("td", {}, formatDate(l.created_at)),
+      h("td", {}, l.username),
+      h("td", {}, l.action),
+      h("td", { class: "clip", title: l.detail }, l.detail),
+      h("td", { class: "mono" }, l.ip)),
+  },
+};
+
+async function loadLogs(append) {
+  const view = logViews[logKind];
+  const q = $("#log-filter").value.trim();
+  const params = new URLSearchParams({ q, limit: String(LOG_PAGE) });
+  if (append && logItems.length) params.set("before", String(logItems[logItems.length - 1].id));
+  const items = await api("GET", `/logs/${logKind}?${params}`);
+  logItems = append ? logItems.concat(items) : items;
+  for (const b of $$("#log-kinds button")) b.classList.toggle("active", b.dataset.kind === logKind);
+  $("#log-hint").textContent = view.hint;
+  $("#log-head").replaceChildren(h("tr", {}, view.head.map((c) => h("th", {}, c))));
+  $("#log-rows").replaceChildren(...logItems.map(view.row));
+  if (!logItems.length) {
+    $("#log-rows").append(h("tr", {}, h("td", { colspan: view.head.length, class: "muted center" }, "Keine Einträge")));
+  }
+  $("#log-more").hidden = items.length < LOG_PAGE;
+  $("#log-csv").href = `/admin/api/logs/${logKind}/csv?${new URLSearchParams({ q })}`;
+}
+
 // ----------------------------------------------------------- Mein Konto
 
 async function loadAccount() {
@@ -560,6 +665,15 @@ function init() {
   });
   $("#user-new").addEventListener("click", newUser);
   $("#book-new").addEventListener("click", newBook);
+  for (const b of $$("#log-kinds button")) {
+    b.addEventListener("click", () => { logKind = b.dataset.kind; loadLogs(false); });
+  }
+  let logTimer;
+  $("#log-filter").addEventListener("input", () => {
+    clearTimeout(logTimer);
+    logTimer = setTimeout(() => loadLogs(false), 300);
+  });
+  $("#log-more").addEventListener("click", () => loadLogs(true));
   $("#device-filter").addEventListener("input", renderDevices);
   window.addEventListener("hashchange", route);
 

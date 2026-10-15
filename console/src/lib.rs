@@ -8,6 +8,7 @@ pub mod account;
 pub mod addressbook;
 pub mod admin;
 pub mod admin_books;
+pub mod audit;
 pub mod auth;
 pub mod client_api;
 pub mod db;
@@ -60,6 +61,7 @@ pub fn router(state: AppState) -> Router {
         .merge(client_api::router())
         .merge(account::router())
         .merge(addressbook::router())
+        .merge(audit::router())
         .nest("/admin/api", admin::router(state.clone()))
         .merge(web::router())
         .with_state(state)

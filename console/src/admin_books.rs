@@ -11,6 +11,7 @@ use serde_json::{Map, Value};
 
 use crate::{
     addressbook::{new_guid, RULE_FULL, RULE_READ},
+    audit,
     auth::Admin,
     error::{ApiError, ApiResult},
     now, AppState,
@@ -149,7 +150,7 @@ pub async fn create(
     .execute(&state.db)
     .await
     .map_err(name_conflict)?;
-    tracing::info!("{} hat das Adressbuch «{}» angelegt", admin.username, name);
+    audit::admin_event(&state.db, &admin.username, "Adressbuch angelegt", &name, "").await;
     Ok((StatusCode::CREATED, Json(view(&state, &guid).await?)))
 }
 
@@ -162,7 +163,7 @@ pub struct UpdateBook {
 
 pub async fn update(
     State(state): State<AppState>,
-    _: Admin,
+    Admin(admin): Admin,
     Path(guid): Path<String>,
     Json(req): Json<UpdateBook>,
 ) -> ApiResult<Json<BookView>> {
@@ -198,7 +199,16 @@ pub async fn update(
             .await?;
     }
     tx.commit().await?;
-    Ok(Json(view(&state, &guid).await?))
+    let book = view(&state, &guid).await?;
+    audit::admin_event(
+        &state.db,
+        &admin.username,
+        "Adressbuch geändert",
+        &book.name,
+        "",
+    )
+    .await;
+    Ok(Json(book))
 }
 
 pub async fn remove(
@@ -207,11 +217,15 @@ pub async fn remove(
     Path(guid): Path<String>,
 ) -> ApiResult<StatusCode> {
     let (id, _) = book_id(&state, &guid).await?;
+    let name: String = sqlx::query_scalar("select name from address_books where id = ?")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
     sqlx::query("delete from address_books where id = ?")
         .bind(id)
         .execute(&state.db)
         .await?;
-    tracing::info!("{} hat ein Adressbuch gelöscht ({guid})", admin.username);
+    audit::admin_event(&state.db, &admin.username, "Adressbuch gelöscht", &name, "").await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -246,7 +260,7 @@ pub struct SetMember {
 
 pub async fn set_member(
     State(state): State<AppState>,
-    _: Admin,
+    Admin(admin): Admin,
     Path((guid, user_id)): Path<(String, i64)>,
     Json(req): Json<SetMember>,
 ) -> ApiResult<Json<BookView>> {
@@ -269,19 +283,48 @@ pub async fn set_member(
     .bind(req.rule)
     .execute(&state.db)
     .await?;
-    Ok(Json(view(&state, &guid).await?))
+    let book = view(&state, &guid).await?;
+    let member = book
+        .members
+        .iter()
+        .find(|m| m.user_id == user_id)
+        .map(|m| m.username.clone())
+        .unwrap_or_default();
+    audit::admin_event(
+        &state.db,
+        &admin.username,
+        "Adressbuch-Recht gesetzt",
+        &format!("{}: {member} Stufe {}", book.name, req.rule),
+        "",
+    )
+    .await;
+    Ok(Json(book))
 }
 
 pub async fn remove_member(
     State(state): State<AppState>,
-    _: Admin,
+    Admin(admin): Admin,
     Path((guid, user_id)): Path<(String, i64)>,
 ) -> ApiResult<Json<BookView>> {
     let (id, _) = book_id(&state, &guid).await?;
+    let member: String = sqlx::query_scalar("select username from users where id = ?")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .unwrap_or_default();
     sqlx::query("delete from ab_members where ab_id = ? and user_id = ?")
         .bind(id)
         .bind(user_id)
         .execute(&state.db)
         .await?;
-    Ok(Json(view(&state, &guid).await?))
+    let book = view(&state, &guid).await?;
+    audit::admin_event(
+        &state.db,
+        &admin.username,
+        "Adressbuch-Mitglied entfernt",
+        &format!("{}: {member}", book.name),
+        "",
+    )
+    .await;
+    Ok(Json(book))
 }

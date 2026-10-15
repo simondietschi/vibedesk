@@ -40,6 +40,7 @@ Heartbeats hinschicken, und bietet:
 - Benutzerverwaltung mit den Rollen Admin und Benutzer
 - Anmeldung mit Passwort und optionaler Zwei-Faktor-Anmeldung (TOTP)
 - Anmeldung im Client mit persönlichem und geteilten Adressbüchern
+- Protokoll der Verbindungen, Dateiübertragungen, Alarme und Konsolen-Aktionen
 
 Der Client bringt Anmeldung und Adressbuch bereits mit. Die Konsole bietet
 dafür die Schnittstelle an, die er erwartet, der Client selbst ist dafür

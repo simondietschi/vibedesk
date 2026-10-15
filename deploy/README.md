@@ -110,6 +110,10 @@ Die Konsole ist unter `http://<server>:21114` erreichbar. Sie zeigt:
   Konto auch in allen Clients ab.
 - **Adressbücher:** geteilte Adressbücher anlegen und Benutzern zuweisen,
   mit den Rechten «Lesen», «Lesen und schreiben» oder «Volle Kontrolle».
+- **Protokoll:** wer wann von wo auf welches Gerät verbunden war (mit Art der
+  Verbindung, Anmeldeweg und Dauer), Dateiübertragungen, Alarme der Geräte
+  (z.B. viele falsche Passwörter) sowie Anmeldungen und Änderungen in der
+  Konsole. Jede Ansicht lässt sich durchsuchen und als CSV exportieren.
 - **Mein Konto:** Passwort ändern, Zwei-Faktor-Anmeldung mit einer
   Authenticator-App einrichten.
 
@@ -138,6 +142,18 @@ Internet die Konsole hinter HTTPS stellen (siehe unten) und im Client unter
 Einstellungen, Netzwerk als API-Server `https://konsole.example.ch`
 eintragen.
 
+### Protokoll
+
+Die Einträge im Protokoll meldet das gesteuerte Gerät selbst, sobald es die
+Konsole als API-Server kennt (automatisch, wie bei den Heartbeats). Die
+Konsole nimmt nur Meldungen von Geräten an, die bei hbbs registriert sind,
+und erkennt doppelt gesendete Meldungen. Eine Notiz, die jemand am Ende einer
+Sitzung im steuernden Client eingibt, erscheint in der Spalte «Notiz».
+
+Das Protokoll enthält personenbezogene Daten (Namen, IP-Adressen,
+Dateinamen). Die Aufbewahrungsdauer lässt sich mit
+`VIBEDESK_CONSOLE_LOG_DAYS` festlegen.
+
 Die Konsole prüft jeden Heartbeat gegen die Gerätedatenbank von hbbs: Nur
 ein Gerät, dessen ID und interne UUID dort registriert sind, kann Daten
 melden. Dafür braucht die Konsole Lesezugriff auf `db_v2.sqlite3`
@@ -163,6 +179,7 @@ sudo -u vibedesk vibedesk-console --db /var/lib/vibedesk/console.sqlite3 reset-p
 | `VIBEDESK_HBBS_DB` | leer | Gerätedatenbank von hbbs, nur lesend |
 | `VIBEDESK_CONSOLE_SECURE_COOKIES` | `false` | Anmelde-Cookie nur über HTTPS senden |
 | `VIBEDESK_CONSOLE_TRUST_PROXY` | `false` | Client-Adresse aus `X-Forwarded-For` lesen |
+| `VIBEDESK_CONSOLE_LOG_DAYS` | `365` | Protokolleinträge nach so vielen Tagen löschen |
 
 ### HTTPS
 

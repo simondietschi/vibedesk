@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
-use vibedesk_console::{admin, auth, db, hbbs::HbbsDb, router, AppState, Settings};
+use vibedesk_console::{admin, audit, auth, db, hbbs::HbbsDb, router, AppState, Settings};
 
 #[derive(Parser)]
 #[command(
@@ -54,6 +54,10 @@ struct ServeArgs {
     /// Client-Adresse aus X-Forwarded-For übernehmen (nur hinter eigenem Proxy)
     #[arg(long, env = "VIBEDESK_CONSOLE_TRUST_PROXY")]
     trust_proxy: bool,
+
+    /// Protokolleinträge nach so vielen Tagen löschen
+    #[arg(long, env = "VIBEDESK_CONSOLE_LOG_DAYS", default_value_t = 365)]
+    log_days: i64,
 }
 
 #[tokio::main]
@@ -119,6 +123,17 @@ async fn serve(pool: sqlx::SqlitePool, args: ServeArgs) -> anyhow::Result<()> {
         secure_cookies: args.secure_cookies,
         trust_proxy: args.trust_proxy,
     };
+    let log_days = args.log_days.max(1);
+    let prune_pool = pool.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(6 * 3600));
+        loop {
+            interval.tick().await;
+            if let Err(e) = audit::prune(&prune_pool, log_days).await {
+                tracing::warn!("Alte Protokolleinträge konnten nicht gelöscht werden: {e:#}");
+            }
+        }
+    });
     let app = router(AppState::new(pool, hbbs, settings));
     let listen = args.listen;
     let listener = tokio::net::TcpListener::bind(listen)
