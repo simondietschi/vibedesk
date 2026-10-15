@@ -13,6 +13,7 @@ depends=('gtk3' 'xdotool' 'libxcb' 'libxfixes' 'alsa-lib' 'libva' 'libpulse'
          'libappindicator-gtk3' 'gst-plugins-base' 'gst-plugin-pipewire')
 provides=("${_pkgname}")
 conflicts=("${_pkgname}")
+makedepends=('patchelf')
 options=('!strip' '!debug')
 install="${pkgname}.install"
 source=("${url}/releases/download/${_tag}/${_pkgname}-${pkgver}-x86_64.deb")
@@ -21,10 +22,19 @@ sha256sums=('SKIP')
 package() {
   bsdtar -xf data.tar.* -C "${pkgdir}"
 
-  install -d "${pkgdir}/usr/bin"
-  ln -sf "/usr/share/${_pkgname}/${_pkgname}" "${pkgdir}/usr/bin/${_pkgname}"
+  # Arch keeps program files in /usr/lib; the deb puts them in /usr/share.
+  mv "${pkgdir}/usr/share/${_pkgname}" "${pkgdir}/usr/lib/${_pkgname}"
+  # Flutter plugins keep a RUNPATH into the build directory.
+  for f in "${pkgdir}/usr/lib/${_pkgname}"/lib/*.so; do
+    if [ -n "$(patchelf --print-rpath "$f")" ]; then
+      patchelf --set-rpath '$ORIGIN' "$f"
+    fi
+  done
 
-  install -Dm644 "${pkgdir}/usr/share/${_pkgname}/files/systemd/${_pkgname}.service" \
+  install -d "${pkgdir}/usr/bin"
+  ln -sf "/usr/lib/${_pkgname}/${_pkgname}" "${pkgdir}/usr/bin/${_pkgname}"
+
+  install -Dm644 "${pkgdir}/usr/lib/${_pkgname}/files/systemd/${_pkgname}.service" \
     "${pkgdir}/usr/lib/systemd/system/${_pkgname}.service"
   sed -i 's|^ExecStop=pkill|ExecStop=/usr/bin/pkill|' \
     "${pkgdir}/usr/lib/systemd/system/${_pkgname}.service"

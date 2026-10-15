@@ -12,7 +12,7 @@ depends=('gtk3' 'xdotool' 'libxcb' 'libxfixes' 'alsa-lib' 'libva' 'libpulse'
          'libappindicator-gtk3' 'gstreamer' 'gst-plugins-base' 'gst-plugin-pipewire'
          'libvpx' 'aom' 'libyuv' 'opus')
 makedepends=('rustup' 'clang' 'cmake' 'ninja' 'git' 'nasm' 'pkgconf' 'unzip' 'xz'
-             'which' 'python')
+             'which' 'python' 'patchelf')
 conflicts=("${pkgname}-bin")
 options=('!lto' '!debug')
 install="${pkgname}.install"
@@ -73,11 +73,17 @@ build() {
 package() {
   cd "${pkgname}-${pkgver}/client"
 
-  install -d "${pkgdir}/usr/share/${pkgname}"
-  cp -r flutter/build/linux/x64/release/bundle/* "${pkgdir}/usr/share/${pkgname}/"
+  install -d "${pkgdir}/usr/lib/${pkgname}"
+  cp -r flutter/build/linux/x64/release/bundle/* "${pkgdir}/usr/lib/${pkgname}/"
+  # Flutter plugins keep a RUNPATH into the build directory.
+  for f in "${pkgdir}/usr/lib/${pkgname}"/lib/*.so; do
+    if [ -n "$(patchelf --print-rpath "$f")" ]; then
+      patchelf --set-rpath '$ORIGIN' "$f"
+    fi
+  done
 
   install -d "${pkgdir}/usr/bin"
-  ln -s "/usr/share/${pkgname}/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+  ln -s "/usr/lib/${pkgname}/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
 
   install -Dm644 "res/${pkgname}.service" "${pkgdir}/usr/lib/systemd/system/${pkgname}.service"
   sed -i 's|^ExecStop=pkill|ExecStop=/usr/bin/pkill|' "${pkgdir}/usr/lib/systemd/system/${pkgname}.service"
