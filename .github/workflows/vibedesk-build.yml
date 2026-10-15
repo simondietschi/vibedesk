@@ -226,6 +226,12 @@ jobs:
       - name: Paket prüfen
         run: |
           deb=$(ls vibedesk-*.deb | head -n 1)
+          # Alle Dateien müssen root gehören, sonst könnte ein lokaler Benutzer das Programm
+          # austauschen, das der Dienst als root startet.
+          if dpkg-deb -c "$deb" | awk '{print $2}' | grep -v '^root/root$'; then
+            echo "Dateien im deb gehören nicht root"
+            exit 1
+          fi
           dpkg-deb -c "$deb" | awk '{print $6}' > files.txt
           for f in ./usr/share/vibedesk/vibedesk ./usr/share/vibedesk/lib/libvibedesk.so \
                    ./usr/share/vibedesk/files/systemd/vibedesk.service \

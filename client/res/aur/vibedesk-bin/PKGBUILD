@@ -21,7 +21,7 @@ source=("${url}/releases/download/${_tag}/${_pkgname}-${pkgver}-x86_64.deb")
 sha256sums=('@DEB_SHA256@')
 
 package() {
-  bsdtar -xf data.tar.* -C "${pkgdir}"
+  bsdtar --no-same-owner -xf data.tar.* -C "${pkgdir}"
 
   # Arch keeps program files in /usr/lib; the deb puts them in /usr/share.
   install -d "${pkgdir}/usr/lib"
