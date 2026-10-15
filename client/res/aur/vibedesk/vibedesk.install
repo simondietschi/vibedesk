@@ -1,0 +1,15 @@
+post_install() {
+  echo "To let others connect to this computer, enable the VibeDesk service:"
+  echo "  sudo systemctl enable --now vibedesk"
+}
+
+post_upgrade() {
+  if systemctl is-active --quiet vibedesk 2>/dev/null; then
+    echo "Restart the VibeDesk service to use the new version:"
+    echo "  sudo systemctl restart vibedesk"
+  fi
+}
+
+pre_remove() {
+  systemctl --no-reload disable --now vibedesk >/dev/null 2>&1 || true
+}
