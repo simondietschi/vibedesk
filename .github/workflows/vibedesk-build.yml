@@ -258,12 +258,43 @@ jobs:
           mv res/vibedesk-*.pkg.tar.zst "vibedesk-${version}-x86_64.pkg.tar.zst"
           ls -l vibedesk-*.pkg.tar.zst
 
+      # AUR-fertiges PKGBUILD (vibedesk-bin), das das deb dieses Builds aus dem
+      # Release umpackt. makepkg nimmt das deb aus dem Ordner statt es
+      # herunterzuladen und prüft dabei die eingesetzte Prüfsumme.
+      - name: AUR-PKGBUILD erstellen und prüfen
+        env:
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          case "$TAG" in v*) tag="$TAG" ;; *) tag="v${version}" ;; esac
+          deb="vibedesk-${version}-x86_64.deb"
+          sum=$(sha256sum "$deb" | cut -d' ' -f1)
+          mkdir aur
+          cp res/aur/PKGBUILD res/aur/vibedesk-bin.install "$deb" aur/
+          sed -i -e "s/^pkgver=.*/pkgver=${version}/" -e "s/^_tag=.*/_tag=\"${tag}\"/" \
+            -e "s/^sha256sums=.*/sha256sums=('${sum}')/" aur/PKGBUILD
+          docker run --rm -v "$PWD/aur:/aur" -e HOST_UID="$(id -u)" archlinux:base-devel bash -euc '
+            pacman -Syu --noconfirm namcap
+            useradd -m -u "$HOST_UID" builder
+            su builder -c "cd /aur && makepkg --printsrcinfo > .SRCINFO && makepkg -f --nodeps"
+            namcap /aur/PKGBUILD /aur/vibedesk-bin-*.pkg.tar.zst || true
+            pacman -U --noconfirm /aur/vibedesk-bin-*.pkg.tar.zst || true
+            pacman -Q vibedesk-bin
+            test -x /usr/bin/vibedesk
+            test -f /usr/lib/systemd/system/vibedesk.service
+            missing=$(LD_LIBRARY_PATH=/usr/share/vibedesk/lib ldd /usr/share/vibedesk/vibedesk /usr/share/vibedesk/lib/*.so | grep "not found" | sort -u || true)
+            if [ -n "$missing" ]; then echo "Fehlende Bibliotheken:"; echo "$missing"; exit 1; fi
+          '
+          cat aur/.SRCINFO
+          tar -czf "vibedesk-bin-${version}-aur.tar.gz" -C aur PKGBUILD .SRCINFO vibedesk-bin.install
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vibedesk-linux-x86_64
           path: |
             client/vibedesk-*.deb
             client/vibedesk-*.pkg.tar.zst
+            client/vibedesk-bin-*-aur.tar.gz
           if-no-files-found: error
 
   topmost:
