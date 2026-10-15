@@ -8,9 +8,10 @@ sich gegenseitig aus:
 | `vibedesk` | `vibedesk/` | baut den Client aus dem Quellcode (`vibedesk-<version>-src.tar.gz` aus dem Release) |
 | `vibedesk-bin` | `vibedesk-bin/` | packt das fertige `.deb` aus dem Release um |
 
-Das Quellpaket braucht beim Bauen Internet: `prepare()` installiert mit rustup
-die Rust-Version, mit der der Client getestet ist, und lädt die Rust-Crates und
-Dart-Pakete. Flutter selbst ist als Quelle mit Prüfsumme eingetragen. Der
+Das Quellpaket folgt den Rust-Richtlinien von Arch: `cargo` aus den
+`makedepends`, `RUSTUP_TOOLCHAIN=stable` und `cargo fetch` in `prepare()`. Beim
+Bauen braucht es Internet für die Rust-Crates und Dart-Pakete. Flutter ist als
+Quelle mit Prüfsumme eingetragen, weil der Client genau diese Version braucht. Der
 Quellcode-Tarball enthält den Code von `flutter_rust_bridge`, den der Job
 «bridge» erzeugt, weil `ffigen` mit dem aktuellen Clang von Arch falsche Typen
 erzeugt. Hardware-Video-Codecs (`hwcodec`) sind im
@@ -26,7 +27,8 @@ VIBEDESK_RENDEZVOUS_SERVER=desk.example.ch VIBEDESK_RS_PUB_KEY=... makepkg -si
 ## Prüfung im Build
 
 `.github/workflows/vibedesk-build.yml` setzt bei jedem Build Version,
-Release-Tag und Prüfsummen ein und ruft `check-in-arch.sh` auf. Das Skript
+Release-Tag und Prüfsummen ein (die Platzhalter `@SRC_SHA256@` und
+`@DEB_SHA256@` in den Vorlagen) und ruft `check-in-arch.sh` auf. Das Skript
 erzeugt `.SRCINFO`, baut das Paket mit `makepkg` in einem frischen Arch, prüft
 es mit `namcap`, installiert es und sucht fehlende Bibliotheken. Der Release
 enthält danach `vibedesk-<version>-aur.tar.gz` und

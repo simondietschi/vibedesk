@@ -17,7 +17,8 @@ makedepends=('patchelf')
 options=('!strip' '!debug')
 install="${pkgname}.install"
 source=("${url}/releases/download/${_tag}/${_pkgname}-${pkgver}-x86_64.deb")
-sha256sums=('SKIP')
+# The build workflow replaces @DEB_SHA256@ with the checksum of the release deb.
+sha256sums=('@DEB_SHA256@')
 
 package() {
   bsdtar -xf data.tar.* -C "${pkgdir}"

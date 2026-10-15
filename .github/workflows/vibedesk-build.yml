@@ -272,7 +272,7 @@ jobs:
           mkdir aur-bin
           cp res/aur/vibedesk-bin/PKGBUILD res/aur/vibedesk-bin/vibedesk-bin.install "$deb" aur-bin/
           sed -i -e "s/^pkgver=.*/pkgver=${version}/" -e "s/^_tag=.*/_tag=\"${tag}\"/" \
-            -e "s/^sha256sums=('SKIP'/sha256sums=('${sum}'/" aur-bin/PKGBUILD
+            -e "s/@DEB_SHA256@/${sum}/" aur-bin/PKGBUILD
           docker run --rm -v "$PWD/aur-bin:/aur" -v "$PWD/res/aur/check-in-arch.sh:/check.sh:ro" \
             -e HOST_UID="$(id -u)" archlinux:base-devel bash /check.sh /aur
           tar -czf "vibedesk-bin-${version}-aur.tar.gz" -C aur-bin PKGBUILD .SRCINFO vibedesk-bin.install
@@ -333,7 +333,7 @@ jobs:
           mkdir aur-src
           cp res/aur/vibedesk/PKGBUILD res/aur/vibedesk/vibedesk.install "$src" aur-src/
           sed -i -e "s/^pkgver=.*/pkgver=${version}/" -e "s/^_tag=.*/_tag=\"${tag}\"/" \
-            -e "s/^sha256sums=('SKIP'/sha256sums=('${sum}'/" aur-src/PKGBUILD
+            -e "s/@SRC_SHA256@/${sum}/" aur-src/PKGBUILD
           docker run --rm -v "$PWD/aur-src:/aur" -v "$PWD/res/aur/check-in-arch.sh:/check.sh:ro" \
             -e HOST_UID="$(id -u)" archlinux:base-devel bash /check.sh /aur
           tar -czf "vibedesk-${version}-aur.tar.gz" -C aur-src PKGBUILD .SRCINFO vibedesk.install
