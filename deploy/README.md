@@ -110,6 +110,10 @@ Die Konsole ist unter `http://<server>:21114` erreichbar. Sie zeigt:
   Konto auch in allen Clients ab.
 - **Adressbücher:** geteilte Adressbücher anlegen und Benutzern zuweisen,
   mit den Rechten «Lesen», «Lesen und schreiben» oder «Volle Kontrolle».
+- **Gerätegruppen:** Geräte in Gruppen ordnen und Benutzern Zugriff auf
+  Gruppen geben. Benutzer sehen im Client ihre Gruppen mit deren Geräten.
+- **Zugriffsregeln:** Auf Wunsch dürfen nur angemeldete Benutzer verbinden,
+  und nur zu erlaubten Geräten (siehe unten).
 - **Protokoll:** wer wann von wo auf welches Gerät verbunden war (mit Art der
   Verbindung, Anmeldeweg und Dauer), Dateiübertragungen, Alarme der Geräte
   (z.B. viele falsche Passwörter) sowie Anmeldungen und Änderungen in der
@@ -141,6 +145,28 @@ angemeldet ist. Eine Anmeldung im Client verfällt nach 90 Tagen ohne Nutzung.
 Internet die Konsole hinter HTTPS stellen (siehe unten) und im Client unter
 Einstellungen, Netzwerk als API-Server `https://konsole.example.ch`
 eintragen.
+
+### Zugriffsregeln
+
+Unter «Gerätegruppen» lässt sich der Zugriff von «Offen» auf «Nur nach
+Regeln» umstellen. Dann vermittelt hbbs eine Verbindung nur, wenn der
+steuernde Client mit einem Konto angemeldet ist, und zwar:
+
+- **Admins** zu allen Geräten,
+- **Benutzer** zu den Geräten, auf denen sie selbst angemeldet sind, und zu
+  den Geräten der Gruppen, auf die sie Zugriff haben.
+
+Alle anderen Verbindungsversuche lehnt hbbs mit einer Meldung im Client ab,
+auch über den Relay. Das Passwort des Zielgeräts braucht es weiterhin.
+
+Dafür muss hbbs die Datenbank der Konsole lesen können
+(`VIBEDESK_CONSOLE_DB`, in `docker-compose.yml` und der systemd-Unit
+vorbereitet). Ist sie nicht lesbar, gelten keine Regeln, und hbbs schreibt
+eine Warnung ins Log.
+
+Grenzen: Direkte Verbindungen per IP-Adresse im lokalen Netz («Direkter
+IP-Zugriff» im Client) laufen nicht über hbbs und werden darum nicht
+geprüft. Bestehende Verbindungen bleiben beim Umschalten bestehen.
 
 ### Protokoll
 

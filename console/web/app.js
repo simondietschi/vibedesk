@@ -177,12 +177,12 @@ async function showApp() {
 
 function route() {
   if (!me) return;
-  const views = { "#geraete": "devices", "#benutzer": "users", "#adressbuecher": "books", "#protokoll": "logs", "#konto": "account" };
+  const views = { "#geraete": "devices", "#benutzer": "users", "#gruppen": "groups", "#adressbuecher": "books", "#protokoll": "logs", "#konto": "account" };
   let view = views[location.hash] || (me.role === "admin" ? "devices" : "account");
   if (me.role !== "admin" && view !== "account") view = "account";
   for (const v of $$(".view")) v.hidden = v.id !== "view-" + view;
   for (const a of $$("nav a")) a.classList.toggle("active", a.dataset.view === view);
-  ({ devices: loadDevices, users: loadUsers, books: loadBooks, logs: () => loadLogs(false), account: loadAccount })[view]();
+  ({ devices: loadDevices, users: loadUsers, groups: loadGroups, books: loadBooks, logs: () => loadLogs(false), account: loadAccount })[view]();
 }
 
 // ----------------------------------------------------------------- Geräte
@@ -200,14 +200,14 @@ async function loadDevices() {
 function renderDevices() {
   const q = $("#device-filter").value.trim().toLowerCase();
   const rows = devices
-    .filter((d) => !q || [d.id, d.hostname, d.username, d.account, d.note, d.os, d.ip]
+    .filter((d) => !q || [d.id, d.hostname, d.username, d.account, d.group, d.note, d.os, d.ip]
       .some((v) => (v || "").toLowerCase().includes(q)))
     .sort((a, b) => (b.online - a.online) || ((b.last_seen_at || 0) - (a.last_seen_at || 0)) || a.id.localeCompare(b.id));
   const online = devices.filter((d) => d.online).length;
   $("#device-summary").textContent = `${online} von ${devices.length} online`;
   $("#device-rows").replaceChildren(...rows.map(deviceRow));
   if (!rows.length) {
-    $("#device-rows").append(h("tr", {}, h("td", { colspan: 10, class: "muted center" },
+    $("#device-rows").append(h("tr", {}, h("td", { colspan: 11, class: "muted center" },
       devices.length ? "Keine Treffer" : "Noch keine Geräte")));
   }
 }
@@ -223,12 +223,14 @@ function deviceRow(d) {
     h("td", { title }, d.hostname || h("span", { class: "muted" }, "unbekannt")),
     h("td", {}, d.username),
     h("td", {}, d.account || h("span", { class: "muted" }, "–")),
+    h("td", {}, d.group || h("span", { class: "muted" }, "–")),
     h("td", { class: "clip", title: d.os }, d.os),
     h("td", {}, d.version),
     h("td", { title: formatDate(d.last_seen_at) }, relative(d.last_seen_at)),
     h("td", { class: "clip note", title: d.note }, d.note),
     h("td", { class: "row-actions" },
       h("button", { class: "link", onclick: () => editNote(d) }, "Notiz"),
+      h("button", { class: "link", onclick: () => setDeviceGroup(d) }, "Gruppe"),
       d.registered === true ? null :
         h("button", { class: "link danger", onclick: () => removeDevice(d) }, "Entfernen")));
 }
@@ -239,6 +241,24 @@ async function editNote(d) {
     fields: [{ name: "note", label: "Notiz", type: "textarea", value: d.note, maxlength: 1000 }],
     okLabel: "Speichern",
     onOk: (v) => api("PATCH", `/devices/${encodeURIComponent(d.id)}`, { note: v.note }),
+  }) && loadDevices();
+}
+
+async function setDeviceGroup(d) {
+  const groups = await api("GET", "/device-groups");
+  if (!groups.length) {
+    await dialog({ title: "Keine Gerätegruppen", text: "Lege zuerst unter «Gerätegruppen» eine Gruppe an.", cancel: false });
+    return;
+  }
+  await dialog({
+    title: `Gruppe für ${d.hostname || d.id}`,
+    fields: [{
+      name: "group_id", label: "Gruppe",
+      options: [["", "keine"], ...groups.map((g) => [String(g.id), g.name])],
+      value: d.group_id == null ? "" : String(d.group_id),
+    }],
+    okLabel: "Speichern",
+    onOk: (v) => api("PUT", `/devices/${encodeURIComponent(d.id)}/group`, { group_id: v.group_id ? Number(v.group_id) : null }),
   }) && loadDevices();
 }
 
@@ -347,6 +367,103 @@ async function deleteUser(u) {
     danger: true,
     onOk: () => api("DELETE", `/users/${u.id}`),
   }) && loadUsers();
+}
+
+// --------------------------------------------------------- Gerätegruppen
+
+async function loadGroups() {
+  const [groups, settings] = await Promise.all([api("GET", "/device-groups"), api("GET", "/settings")]);
+  for (const r of $$('input[name="access_mode"]')) r.checked = r.value === settings.access_mode;
+  showAccessHint(settings.access_mode);
+  $("#group-rows").replaceChildren(...groups.map(groupRow));
+  if (!groups.length) {
+    $("#group-rows").append(h("tr", {}, h("td", { colspan: 5, class: "muted center" }, "Noch keine Gerätegruppen")));
+  }
+}
+
+function showAccessHint(mode) {
+  const hint = $("#access-hint");
+  hint.hidden = mode !== "groups";
+  hint.textContent = "Aktiv, sofern hbbs die Datenbank der Konsole kennt (VIBEDESK_CONSOLE_DB). Wer im Client nicht angemeldet ist, kann jetzt keine Verbindung mehr aufbauen.";
+}
+
+function groupRow(g) {
+  const users = g.users.length ? g.users.map((u) => u.username).join(", ") : h("span", { class: "muted" }, "nur Admins");
+  return h("tr", {},
+    h("td", {}, g.name),
+    h("td", {}, String(g.device_count)),
+    h("td", { class: "clip" }, users),
+    h("td", { class: "clip note", title: g.note }, g.note),
+    h("td", { class: "row-actions" },
+      h("button", { class: "link", onclick: () => manageGroupUsers(g) }, "Benutzer"),
+      h("button", { class: "link", onclick: () => editGroup(g) }, "Bearbeiten"),
+      h("button", { class: "link danger", onclick: () => deleteGroup(g) }, "Löschen")));
+}
+
+async function newGroup() {
+  await dialog({
+    title: "Gerätegruppe anlegen",
+    fields: [
+      { name: "name", label: "Name", required: true },
+      { name: "note", label: "Notiz", type: "textarea", maxlength: 1000 },
+    ],
+    okLabel: "Anlegen",
+    onOk: (v) => api("POST", "/device-groups", v),
+  }) && loadGroups();
+}
+
+async function editGroup(g) {
+  await dialog({
+    title: `${g.name} bearbeiten`,
+    fields: [
+      { name: "name", label: "Name", value: g.name, required: true },
+      { name: "note", label: "Notiz", type: "textarea", value: g.note, maxlength: 1000 },
+    ],
+    okLabel: "Speichern",
+    onOk: (v) => api("PATCH", `/device-groups/${g.id}`, v),
+  }) && loadGroups();
+}
+
+async function deleteGroup(g) {
+  await dialog({
+    title: "Gerätegruppe löschen",
+    text: `«${g.name}» löschen? Die ${g.device_count} Geräte bleiben erhalten, gehören dann aber zu keiner Gruppe mehr.`,
+    okLabel: "Löschen",
+    danger: true,
+    onOk: () => api("DELETE", `/device-groups/${g.id}`),
+  }) && loadGroups();
+}
+
+async function manageGroupUsers(g) {
+  const all = await userOptions();
+  const render = (group) => {
+    const list = group.users.length
+      ? h("ul", { class: "member-list" }, group.users.map((u) => h("li", {},
+          h("span", {}, u.username),
+          h("button", {
+            class: "link danger", type: "button",
+            onclick: async () => render(await api("DELETE", `/device-groups/${g.id}/users/${u.user_id}`)),
+          }, "Entfernen"))))
+      : h("p", { class: "muted" }, "Noch niemand. Admins haben immer Zugriff.");
+    $("#member-list-slot").replaceChildren(list);
+  };
+  const free = all.filter(([id]) => !g.users.some((u) => u.user_id === Number(id)));
+  const done = dialog({
+    title: `Zugriff auf ${g.name}`,
+    text: [h("div", { id: "member-list-slot" }), h("p", {}, "Benutzer hinzufügen:")],
+    fields: [{ name: "user_id", label: "Benutzer", options: [["", "Bitte wählen"], ...free] }],
+    okLabel: "Hinzufügen",
+    onOk: async (v) => {
+      if (!v.user_id) throw new Error("Bitte einen Benutzer wählen");
+      await api("PUT", `/device-groups/${g.id}/users/${v.user_id}`);
+    },
+  });
+  render(g);
+  if (await done) {
+    const fresh = (await api("GET", "/device-groups")).find((x) => x.id === g.id);
+    if (fresh) await manageGroupUsers(fresh);
+  }
+  loadGroups();
 }
 
 // ----------------------------------------------------------- Adressbücher
@@ -665,6 +782,28 @@ function init() {
   });
   $("#user-new").addEventListener("click", newUser);
   $("#book-new").addEventListener("click", newBook);
+  $("#group-new").addEventListener("click", newGroup);
+  for (const r of $$('input[name="access_mode"]')) {
+    r.addEventListener("change", async () => {
+      $("#access-error").textContent = "";
+      if (r.value === "groups") {
+        const ok = await dialog({
+          title: "Zugriff nur nach Regeln",
+          text: "Ab sofort können nur noch im Client angemeldete Benutzer Verbindungen aufbauen, und nur zu erlaubten Geräten. Fortfahren?",
+          okLabel: "Einschalten",
+          danger: true,
+        });
+        if (!ok) { loadGroups(); return; }
+      }
+      try {
+        const s = await api("PUT", "/settings", { access_mode: r.value });
+        showAccessHint(s.access_mode);
+      } catch (e) {
+        $("#access-error").textContent = e.message;
+        loadGroups();
+      }
+    });
+  }
   for (const b of $$("#log-kinds button")) {
     b.addEventListener("click", () => { logKind = b.dataset.kind; loadLogs(false); });
   }

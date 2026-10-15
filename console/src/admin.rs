@@ -20,7 +20,7 @@ use crate::{
         ClientIp, CurrentUser, LoginLimiter,
     },
     error::{ApiError, ApiResult},
-    now, totp, AppState, ONLINE_WINDOW_SECS,
+    groups, now, totp, AppState, ONLINE_WINDOW_SECS,
 };
 
 /// Header, den die Weboberfläche bei jeder ändernden Anfrage mitsendet.
@@ -54,6 +54,20 @@ pub fn router(state: AppState) -> Router<AppState> {
         )
         .route("/address-books/{guid}/peers", get(admin_books::peers))
         .route("/logs/{kind}", get(audit::list))
+        .route(
+            "/settings",
+            get(groups::get_settings).put(groups::put_settings),
+        )
+        .route("/device-groups", get(groups::list).post(groups::create))
+        .route(
+            "/device-groups/{id}",
+            patch(groups::update).delete(groups::remove),
+        )
+        .route(
+            "/device-groups/{id}/users/{user_id}",
+            put(groups::add_user).delete(groups::remove_user),
+        )
+        .route("/devices/{id}/group", put(groups::set_device_group))
         .route("/logs/{kind}/csv", get(audit::export_csv))
         .route(
             "/address-books/{guid}/members/{user_id}",
@@ -750,6 +764,8 @@ struct DeviceView {
     ip: String,
     /// Konto, mit dem der Client auf diesem Gerät angemeldet ist.
     account: String,
+    group_id: Option<i64>,
+    group: String,
     online: bool,
     first_seen_at: Option<i64>,
     last_seen_at: Option<i64>,
@@ -771,13 +787,17 @@ struct DeviceRow {
     first_seen_at: Option<i64>,
     last_seen_at: Option<i64>,
     account: Option<String>,
+    group_id: Option<i64>,
+    group_name: Option<String>,
 }
 
 async fn list_devices(State(state): State<AppState>, _: Admin) -> ApiResult<Json<Vec<DeviceView>>> {
     let rows: Vec<DeviceRow> = sqlx::query_as(
         "select d.id, d.hostname, d.username, d.os, d.version, d.cpu, d.memory, d.note,
-                d.first_seen_at, d.last_seen_at, u.username as account
-         from devices d left join users u on u.id = d.user_id",
+                d.first_seen_at, d.last_seen_at, u.username as account,
+                d.group_id, g.name as group_name
+         from devices d left join users u on u.id = d.user_id
+         left join device_groups g on g.id = d.group_id",
     )
     .fetch_all(&state.db)
     .await?;
@@ -800,6 +820,8 @@ async fn list_devices(State(state): State<AppState>, _: Admin) -> ApiResult<Json
                 first_seen_at: r.first_seen_at,
                 last_seen_at: r.last_seen_at,
                 account: r.account.unwrap_or_default(),
+                group_id: r.group_id,
+                group: r.group_name.unwrap_or_default(),
                 ..Default::default()
             };
             (r.id, view)

@@ -200,6 +200,9 @@ a.button {
   color: var(--text); text-decoration: none; background: var(--surface);
 }
 .small { font-size: 12px; }
+.access-card { margin-bottom: 16px; }
+label.radio { flex-direction: row; align-items: flex-start; gap: 10px; color: var(--text); }
+label.radio input { margin-top: 4px; }
 
 dialog .table-wrap { max-height: 50vh; overflow: auto; }
 .member-list { list-style: none; padding: 0; margin: 0 0 12px; }

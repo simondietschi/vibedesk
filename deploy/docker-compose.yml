@@ -12,6 +12,9 @@ services:
   hbbs:
     image: ghcr.io/simondietschi/vibedesk-server:latest
     command: ["hbbs"]
+    environment:
+      # Zugriffsregeln der Konsole beim Verbindungsaufbau durchsetzen
+      VIBEDESK_CONSOLE_DB: /data/console.sqlite3
     # Nur Clients mit dem Schlüssel dieses Servers zulassen:
     # command: ["hbbs", "-k", "_"]
     network_mode: host

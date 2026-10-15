@@ -13,6 +13,7 @@ pub mod auth;
 pub mod client_api;
 pub mod db;
 pub mod error;
+pub mod groups;
 pub mod hbbs;
 pub mod totp;
 pub mod web;

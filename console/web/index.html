@@ -32,6 +32,7 @@
       <nav>
         <a href="#geraete" data-view="devices">Geräte</a>
         <a href="#benutzer" data-view="users" data-admin>Benutzer</a>
+        <a href="#gruppen" data-view="groups" data-admin>Gerätegruppen</a>
         <a href="#adressbuecher" data-view="books" data-admin>Adressbücher</a>
         <a href="#protokoll" data-view="logs" data-admin>Protokoll</a>
         <a href="#konto" data-view="account">Mein Konto</a>
@@ -50,7 +51,7 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Status</th><th>ID</th><th>Name</th><th>Benutzer</th><th>Konto</th><th>System</th><th>Version</th><th>Zuletzt gesehen</th><th>Notiz</th><th></th></tr>
+            <tr><th>Status</th><th>ID</th><th>Name</th><th>Benutzer</th><th>Konto</th><th>Gruppe</th><th>System</th><th>Version</th><th>Zuletzt gesehen</th><th>Notiz</th><th></th></tr>
           </thead>
           <tbody id="device-rows"></tbody>
         </table>
@@ -70,6 +71,31 @@
           <tbody id="user-rows"></tbody>
         </table>
       </div>
+    </section>
+
+    <section id="view-groups" class="view" hidden>
+      <div class="toolbar">
+        <h2>Gerätegruppen</h2>
+        <button id="group-new" class="primary">Gruppe anlegen</button>
+      </div>
+      <div class="card access-card">
+        <h3>Zugriffsregeln</h3>
+        <label class="radio"><input type="radio" name="access_mode" value="open">
+          <span><strong>Offen:</strong> Jeder kann mit Geräte-ID und Passwort verbinden, wie bei RustDesk üblich.</span></label>
+        <label class="radio"><input type="radio" name="access_mode" value="groups">
+          <span><strong>Nur nach Regeln:</strong> Verbinden dürfen nur im Client angemeldete Benutzer. Admins erreichen alle Geräte, Benutzer ihre eigenen und die Geräte ihrer Gruppen. hbbs lehnt alle anderen Verbindungen ab.</span></label>
+        <p class="hint" id="access-hint" hidden></p>
+        <p class="error" role="alert" id="access-error"></p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Geräte</th><th>Benutzer mit Zugriff</th><th>Notiz</th><th></th></tr>
+          </thead>
+          <tbody id="group-rows"></tbody>
+        </table>
+      </div>
+      <p class="muted">Geräte ordnest du unter «Geräte» mit «Gruppe» zu. Jedes Gerät gehört zu höchstens einer Gruppe.</p>
     </section>
 
     <section id="view-books" class="view" hidden>
