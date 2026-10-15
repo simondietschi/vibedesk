@@ -8,6 +8,8 @@ Wants=network-online.target
 User=vibedesk
 Group=vibedesk
 WorkingDirectory=/var/lib/vibedesk
+# Zugriffsregeln der Konsole beim Verbindungsaufbau durchsetzen
+Environment=VIBEDESK_CONSOLE_DB=/var/lib/vibedesk/console.sqlite3
 ExecStart=/usr/local/bin/hbbs
 Restart=on-failure
 LimitNOFILE=1000000

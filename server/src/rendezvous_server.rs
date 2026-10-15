@@ -543,6 +543,10 @@ impl RendezvousServer {
                     if let Some(sink) = sink.take() {
                         self.tcp_punch.lock().await.insert(try_into_v4(addr), sink);
                     }
+                    if crate::vibedesk_access::check(&rf.token, &rf.id).await.is_some() {
+                        log::info!("VibeDesk: Relay von {} zu {} abgelehnt", addr, rf.id);
+                        return true;
+                    }
                     if let Some(peer) = self.pm.get_in_memory(&rf.id).await {
                         let mut msg_out = RendezvousMessage::new();
                         rf.socket_addr = AddrMangle::encode(addr).into();
@@ -732,6 +736,15 @@ impl RendezvousServer {
             let mut msg_out = RendezvousMessage::new();
             msg_out.set_punch_hole_response(PunchHoleResponse {
                 failure: punch_hole_response::Failure::LICENSE_MISMATCH.into(),
+                ..Default::default()
+            });
+            return Ok((msg_out, None));
+        }
+        if let Some(reason) = crate::vibedesk_access::check(&ph.token, &ph.id).await {
+            log::info!("VibeDesk: Verbindung von {} zu {} abgelehnt", addr, ph.id);
+            let mut msg_out = RendezvousMessage::new();
+            msg_out.set_punch_hole_response(PunchHoleResponse {
+                other_failure: reason,
                 ..Default::default()
             });
             return Ok((msg_out, None));

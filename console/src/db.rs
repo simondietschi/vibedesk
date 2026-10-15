@@ -155,6 +155,27 @@ create table audit_nonces (
     created_at integer not null
 );
 "#,
+    r#"
+create table settings (
+    key text primary key,
+    value text not null
+);
+
+create table device_groups (
+    id integer primary key,
+    name text not null unique collate nocase,
+    note text not null default '',
+    created_at integer not null
+);
+
+create table device_group_users (
+    group_id integer not null references device_groups(id) on delete cascade,
+    user_id integer not null references users(id) on delete cascade,
+    primary key (group_id, user_id)
+);
+
+alter table devices add column group_id integer references device_groups(id) on delete set null;
+"#,
 ];
 
 pub async fn open(path: &str) -> anyhow::Result<SqlitePool> {

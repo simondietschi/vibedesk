@@ -515,26 +515,38 @@ async fn peers(
     let (limit, offset) = page(&query);
     // Admins sehen alle bekannten Geräte, alle anderen nur die eigenen.
     let only = (!user.is_admin).then_some(user.id);
+    // Admins sehen alle bekannten Geräte, alle anderen die eigenen und die
+    // ihrer Gerätegruppen.
     let filter = "(?1 is null and (d.first_seen_at is not null or d.user_id is not null))
-                  or d.user_id = ?1";
+                  or d.user_id = ?1
+                  or d.group_id in (select group_id from device_group_users where user_id = ?1)";
     let total: i64 = sqlx::query_scalar(&format!("select count(*) from devices d where {filter}"))
         .bind(only)
         .fetch_one(&state.db)
         .await?;
-    let rows: Vec<(String, String, String, String, String, Option<String>)> =
-        sqlx::query_as(&format!(
-            "select d.id, d.hostname, d.username, d.os, d.note, u.username
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(&format!(
+        "select d.id, d.hostname, d.username, d.os, d.note, u.username, g.name
              from devices d left join users u on u.id = d.user_id
+             left join device_groups g on g.id = d.group_id
              where {filter} order by d.id limit ?2 offset ?3"
-        ))
-        .bind(only)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&state.db)
-        .await?;
+    ))
+    .bind(only)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(&state.db)
+    .await?;
     let data = rows
         .into_iter()
-        .map(|(id, hostname, os_user, os, note, account)| {
+        .map(|(id, hostname, os_user, os, note, account, group)| {
             let account = account.unwrap_or_default();
             json!({
                 "id": id,
@@ -543,13 +555,41 @@ async fn peers(
                 "user": account,
                 "user_name": account,
                 "note": note,
-                "device_group_name": "",
+                "device_group_name": group.unwrap_or_default(),
             })
         })
         .collect();
     Ok(paged(total, data))
 }
 
-async fn device_groups(_: ApiUser) -> Json<Value> {
-    paged(0, vec![])
+async fn device_groups(
+    State(state): State<AppState>,
+    user: ApiUser,
+    Query(query): Query<HashMap<String, String>>,
+) -> ApiResult<Json<Value>> {
+    let (limit, offset) = page(&query);
+    let only = (!user.is_admin).then_some(user.id);
+    let filter = "?1 is null or id in (select group_id from device_group_users where user_id = ?1)";
+    let total: i64 = sqlx::query_scalar(&format!(
+        "select count(*) from device_groups where {filter}"
+    ))
+    .bind(only)
+    .fetch_one(&state.db)
+    .await?;
+    let names: Vec<String> = sqlx::query_scalar(&format!(
+        "select name from device_groups where {filter}
+         order by name collate nocase limit ?2 offset ?3"
+    ))
+    .bind(only)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(paged(
+        total,
+        names
+            .into_iter()
+            .map(|name| json!({ "name": name }))
+            .collect(),
+    ))
 }
