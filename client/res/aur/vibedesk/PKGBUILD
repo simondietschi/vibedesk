@@ -57,7 +57,8 @@ prepare() {
 
   cd "${pkgname}-${pkgver}/client"
   sed -i 's/\["cdylib", "staticlib", "rlib"\]/["cdylib"]/' Cargo.toml
-  cargo fetch --locked --target "$(rustc -vV | sed -n 's/^host: //p')"
+  # flutter_rust_bridge_codegen runs cargo metadata for all targets.
+  cargo fetch --locked
   (cd flutter && flutter pub get)
 }
 
