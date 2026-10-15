@@ -24,6 +24,7 @@ package() {
   bsdtar -xf data.tar.* -C "${pkgdir}"
 
   # Arch keeps program files in /usr/lib; the deb puts them in /usr/share.
+  install -d "${pkgdir}/usr/lib"
   mv "${pkgdir}/usr/share/${_pkgname}" "${pkgdir}/usr/lib/${_pkgname}"
   # Flutter plugins keep a RUNPATH into the build directory.
   for f in "${pkgdir}/usr/lib/${_pkgname}"/lib/*.so; do
