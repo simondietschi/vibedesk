@@ -10,9 +10,9 @@ url="https://github.com/simondietschi/vibedesk"
 license=('AGPL-3.0-only')
 depends=('gtk3' 'xdotool' 'libxcb' 'libxfixes' 'alsa-lib' 'libva' 'libpulse'
          'libappindicator-gtk3' 'gstreamer' 'gst-plugins-base' 'gst-plugin-pipewire'
-         'libvpx' 'aom' 'libyuv' 'opus')
+         'libvpx' 'aom' 'libyuv' 'opus' 'wayland')
 makedepends=('cargo' 'clang' 'cmake' 'ninja' 'git' 'nasm' 'pkgconf' 'unzip' 'xz'
-             'which' 'python' 'patchelf')
+             'which' 'python' 'patchelf' 'wayland-protocols')
 conflicts=("${pkgname}-bin")
 options=('!lto' '!debug')
 install="${pkgname}.install"
@@ -28,7 +28,11 @@ sha256sums=('@SRC_SHA256@'
 _env() {
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_HOME="${srcdir}/cargo-home"
+  # Flutter's CMake picks up the Rust library from client/target/release.
+  export CARGO_TARGET_DIR="${srcdir}/${pkgname}-${pkgver}/client/target"
   export PUB_CACHE="${srcdir}/pub-cache"
+  # No analytics events and no changes to the builder's ~/.flutter or ~/.dart-tool.
+  export FLUTTER_SUPPRESS_ANALYTICS=true
   export PATH="${srcdir}/flutter/bin:${PATH}"
   # Arch ships libyuv without a pkg-config file on some versions.
   export PKG_CONFIG_PATH="${srcdir}/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
@@ -46,7 +50,6 @@ prepare() {
 
   patch -Np1 -d "${srcdir}/flutter" \
     -i "${srcdir}/${pkgname}-${pkgver}/client/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
-  flutter config --no-analytics >/dev/null
   flutter precache --linux --no-android --no-ios --no-web --no-macos --no-windows --no-fuchsia
 
   cd "${pkgname}-${pkgver}/client"

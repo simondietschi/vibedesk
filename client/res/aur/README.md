@@ -24,6 +24,11 @@ Einen eigenen Server baut man beim Quellpaket so ein:
 VIBEDESK_RENDEZVOUS_SERVER=desk.example.ch VIBEDESK_RS_PUB_KEY=... makepkg -si
 ```
 
+Das fertige Arch-Paket im Release (`vibedesk-bin-<version>-x86_64.pkg.tar.zst`)
+entsteht aus demselben PKGBUILD wie `vibedesk-bin` im AUR. Wer noch das ältere
+Paket `vibedesk-<version>-x86_64.pkg.tar.zst` aus `v1.5.1-test.1` installiert
+hat, entfernt es vor dem Wechsel mit `sudo pacman -R vibedesk`.
+
 ## Prüfung im Build
 
 `.github/workflows/vibedesk-build.yml` setzt bei jedem Build Version,

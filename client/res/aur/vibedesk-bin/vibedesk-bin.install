@@ -10,6 +10,7 @@ post_upgrade() {
   fi
 }
 
-pre_remove() {
-  systemctl --no-reload disable --now vibedesk >/dev/null 2>&1 || true
+post_remove() {
+  echo "If the VibeDesk service is still enabled, disable it:"
+  echo "  sudo systemctl disable --now vibedesk"
 }

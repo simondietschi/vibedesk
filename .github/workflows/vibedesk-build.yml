@@ -245,25 +245,6 @@ jobs:
           fi
           rm files.txt
 
-      # Paket für Arch Linux aus demselben Build. makepkg läuft nicht als root,
-      # darum ein Benutzer mit der UID des Runners. Danach wird das Paket in
-      # einem frischen Arch installiert und auf fehlende Bibliotheken geprüft.
-      - name: Arch-Paket bauen und prüfen
-        run: |
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
-          sed -i "s/^pkgver=.*/pkgver=${version}/" res/PKGBUILD
-          docker run --rm -v "$PWD:/src" -e HOST_UID="$(id -u)" archlinux:base-devel bash -euc '
-            useradd -m -u "$HOST_UID" builder
-            su builder -c "cd /src/res && HBB=/src FLUTTER=1 makepkg -f --nodeps"
-            pacman -Syu --noconfirm
-            pacman -U --noconfirm /src/res/vibedesk-*.pkg.tar.zst || true
-            pacman -Q vibedesk
-            missing=$(LD_LIBRARY_PATH=/usr/share/vibedesk/lib ldd /usr/share/vibedesk/vibedesk /usr/share/vibedesk/lib/*.so | grep "not found" | sort -u || true)
-            if [ -n "$missing" ]; then echo "Fehlende Bibliotheken:"; echo "$missing"; exit 1; fi
-          '
-          mv res/vibedesk-*.pkg.tar.zst "vibedesk-${version}-x86_64.pkg.tar.zst"
-          ls -l vibedesk-*.pkg.tar.zst
-
       # AUR-fertiges PKGBUILD (vibedesk-bin), das das deb dieses Builds aus dem
       # Release umpackt. makepkg nimmt das deb aus dem Ordner statt es
       # herunterzuladen und prüft dabei die eingesetzte Prüfsumme.
@@ -282,6 +263,9 @@ jobs:
           docker run --rm -v "$PWD/aur-bin:/aur" -v "$PWD/res/aur/check-in-arch.sh:/check.sh:ro" \
             -e HOST_UID="$(id -u)" archlinux:base-devel bash /check.sh /aur
           tar -czf "vibedesk-bin-${version}-aur.tar.gz" -C aur-bin PKGBUILD .SRCINFO vibedesk-bin.install
+          # Das fertige Arch-Paket kommt aus demselben PKGBUILD wie im AUR, damit es
+          # sich später ohne Konflikte durch vibedesk oder vibedesk-bin ersetzen lässt.
+          mv aur-bin/vibedesk-bin-*.pkg.tar.zst "vibedesk-bin-${version}-x86_64.pkg.tar.zst"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -334,7 +318,8 @@ jobs:
                    flutter/lib/generated_bridge.dart flutter/lib/generated_bridge.freezed.dart; do
             install -Dm644 "$f" "$stage/vibedesk-${version}/client/$f"
           done
-          tar -czf "$src" -C "$stage" --sort=name --owner=0 --group=0 --numeric-owner "vibedesk-${version}"
+          tar -czf "$src" -C "$stage" --sort=name --owner=0 --group=0 --numeric-owner \
+            --mtime="@$(git log -1 --format=%ct)" "vibedesk-${version}"
           sum=$(sha256sum "$src" | cut -d' ' -f1)
           mkdir aur-src
           cp res/aur/vibedesk/PKGBUILD res/aur/vibedesk/vibedesk.install "$src" aur-src/
@@ -952,6 +937,19 @@ jobs:
 
       - name: Prüfsummen erstellen
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      # Ein zweiter Lauf mit demselben Tag würde die Assets ersetzen. Bei einem schon
+      # veröffentlichten Release passen dann die Prüfsummen im AUR nicht mehr.
+      - name: Nicht in einen veröffentlichten Release hochladen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          if [ "$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null)" = "false" ]; then
+            echo "::error::Release $TAG ist schon veröffentlicht, die Assets würden ersetzt"
+            exit 1
+          fi
 
       # Als Entwurf, damit ein Release erst nach Durchsicht öffentlich wird.
       - uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
