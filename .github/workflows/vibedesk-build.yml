@@ -239,10 +239,31 @@ jobs:
           fi
           rm files.txt
 
+      # Paket für Arch Linux aus demselben Build. makepkg läuft nicht als root,
+      # darum ein Benutzer mit der UID des Runners. Danach wird das Paket in
+      # einem frischen Arch installiert und auf fehlende Bibliotheken geprüft.
+      - name: Arch-Paket bauen und prüfen
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          sed -i "s/^pkgver=.*/pkgver=${version}/" res/PKGBUILD
+          docker run --rm -v "$PWD:/src" -e HOST_UID="$(id -u)" archlinux:base-devel bash -euc '
+            useradd -m -u "$HOST_UID" builder
+            su builder -c "cd /src/res && HBB=/src FLUTTER=1 makepkg -f --nodeps"
+            pacman -Syu --noconfirm
+            pacman -U --noconfirm /src/res/vibedesk-*.pkg.tar.zst || true
+            pacman -Q vibedesk
+            missing=$(LD_LIBRARY_PATH=/usr/share/vibedesk/lib ldd /usr/share/vibedesk/vibedesk /usr/share/vibedesk/lib/*.so | grep "not found" | sort -u || true)
+            if [ -n "$missing" ]; then echo "Fehlende Bibliotheken:"; echo "$missing"; exit 1; fi
+          '
+          mv res/vibedesk-*.pkg.tar.zst "vibedesk-${version}-x86_64.pkg.tar.zst"
+          ls -l vibedesk-*.pkg.tar.zst
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vibedesk-linux-x86_64
-          path: client/vibedesk-*.deb
+          path: |
+            client/vibedesk-*.deb
+            client/vibedesk-*.pkg.tar.zst
           if-no-files-found: error
 
   topmost:
