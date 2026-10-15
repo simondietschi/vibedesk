@@ -92,6 +92,69 @@ create table ab_tags (
 
 alter table devices add column user_id integer references users(id) on delete set null;
 "#,
+    r#"
+create table conn_log (
+    id integer primary key,
+    device_id text not null,
+    conn_id integer not null,
+    session_id text not null default '',
+    ip text not null default '',
+    peer_id text not null default '',
+    peer_name text not null default '',
+    conn_type integer,
+    primary_auth integer,
+    two_factor integer,
+    note text not null default '',
+    started_at integer not null,
+    authed_at integer,
+    ended_at integer
+);
+create index conn_log_device on conn_log(device_id, conn_id);
+create index conn_log_session on conn_log(device_id, session_id);
+create index conn_log_started on conn_log(started_at);
+
+create table file_log (
+    id integer primary key,
+    device_id text not null,
+    peer_id text not null default '',
+    peer_name text not null default '',
+    ip text not null default '',
+    direction integer not null,
+    path text not null default '',
+    is_file integer not null default 0,
+    num integer not null default 0,
+    files text not null default '[]',
+    created_at integer not null
+);
+create index file_log_created on file_log(created_at);
+
+create table alarm_log (
+    id integer primary key,
+    device_id text not null,
+    typ integer not null,
+    peer_id text not null default '',
+    peer_name text not null default '',
+    ip text not null default '',
+    info text not null default '{}',
+    created_at integer not null
+);
+create index alarm_log_created on alarm_log(created_at);
+
+create table admin_log (
+    id integer primary key,
+    username text not null default '',
+    action text not null,
+    detail text not null default '',
+    ip text not null default '',
+    created_at integer not null
+);
+create index admin_log_created on admin_log(created_at);
+
+create table audit_nonces (
+    nonce text primary key,
+    created_at integer not null
+);
+"#,
 ];
 
 pub async fn open(path: &str) -> anyhow::Result<SqlitePool> {

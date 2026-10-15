@@ -19,6 +19,7 @@ use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{json, Value};
 
 use crate::{
+    audit,
     auth::{
         burn_password_check, random_token, token_hash, verify_password, ClientIp, LoginLimiter,
     },
@@ -206,13 +207,30 @@ async fn login(
             "Benutzername oder Passwort falsch",
         )
     };
+    let ip_text = ip.map(|ip| ip.to_string()).unwrap_or_default();
     let Some(row) = row else {
         burn_password_check(&req.password);
         state.limiter.fail(&keys, now);
+        audit::admin_event(
+            &state.db,
+            &req.username,
+            "Anmeldung Client fehlgeschlagen",
+            "unbekanntes Konto",
+            &ip_text,
+        )
+        .await;
         return Err(wrong());
     };
     if !verify_password(&row.password_hash, &req.password) {
         state.limiter.fail(&keys, now);
+        audit::admin_event(
+            &state.db,
+            &req.username,
+            "Anmeldung Client fehlgeschlagen",
+            "falsches Passwort",
+            &ip_text,
+        )
+        .await;
         return Err(wrong());
     }
     if row.disabled {
@@ -362,11 +380,14 @@ async fn issue_token(
         .await?;
     tx.commit().await?;
     bind_device(state, &device_id, device_uuid, Some(row.id)).await?;
-    tracing::info!(
-        "Client-Anmeldung von {} auf Gerät {}",
-        row.username,
-        device_id
-    );
+    audit::admin_event(
+        &state.db,
+        &row.username,
+        "Anmeldung Client",
+        &format!("Gerät {device_id}"),
+        "",
+    )
+    .await;
     Ok(Json(json!({
         "type": "access_token",
         "access_token": token,

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
-    admin_books,
+    admin_books, audit,
     auth::{
         self, burn_password_check, check_password_policy, hash_password, verify_password, Admin,
         ClientIp, CurrentUser, LoginLimiter,
@@ -53,6 +53,8 @@ pub fn router(state: AppState) -> Router<AppState> {
             patch(admin_books::update).delete(admin_books::remove),
         )
         .route("/address-books/{guid}/peers", get(admin_books::peers))
+        .route("/logs/{kind}", get(audit::list))
+        .route("/logs/{kind}/csv", get(audit::export_csv))
         .route(
             "/address-books/{guid}/members/{user_id}",
             put(admin_books::set_member).delete(admin_books::remove_member),
@@ -69,6 +71,10 @@ async fn csrf_guard(State(_): State<AppState>, req: Request, next: Next) -> Resp
     res.headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     res
+}
+
+fn ip_text(ip: Option<std::net::IpAddr>) -> String {
+    ip.map(|ip| ip.to_string()).unwrap_or_default()
 }
 
 fn validate_username(username: &str) -> ApiResult<()> {
@@ -143,10 +149,26 @@ async fn login(
     let Some(row) = row else {
         burn_password_check(&req.password);
         state.limiter.fail(&keys, now);
+        audit::admin_event(
+            &state.db,
+            &req.username,
+            "Anmeldung Konsole fehlgeschlagen",
+            "unbekanntes Konto",
+            &ip_text(ip),
+        )
+        .await;
         return Err(wrong());
     };
     if !verify_password(&row.password_hash, &req.password) {
         state.limiter.fail(&keys, now);
+        audit::admin_event(
+            &state.db,
+            &req.username,
+            "Anmeldung Konsole fehlgeschlagen",
+            "falsches Passwort",
+            &ip_text(ip),
+        )
+        .await;
         return Err(wrong());
     }
     if row.disabled {
@@ -188,7 +210,14 @@ async fn login(
         .execute(&state.db)
         .await?;
     let token = auth::create_session(&state, row.id).await?;
-    tracing::info!("Anmeldung von {} ({:?})", req.username, ip);
+    audit::admin_event(
+        &state.db,
+        &req.username,
+        "Anmeldung Konsole",
+        "",
+        &ip_text(ip),
+    )
+    .await;
     Ok((
         [(
             header::SET_COOKIE,
@@ -255,6 +284,14 @@ async fn change_own_password(
         .await?;
     // Alle Sitzungen beenden, auch gestohlene, und die aktuelle neu ausstellen.
     revoke_sessions(&state, user.id).await?;
+    audit::admin_event(
+        &state.db,
+        &user.username,
+        "Eigenes Passwort geändert",
+        "",
+        "",
+    )
+    .await;
     let token = auth::create_session(&state, user.id).await?;
     Ok((
         [(
@@ -325,7 +362,14 @@ async fn totp_enable(
     .bind(user.id)
     .execute(&state.db)
     .await?;
-    tracing::info!("Zwei-Faktor-Anmeldung für {} eingeschaltet", user.username);
+    audit::admin_event(
+        &state.db,
+        &user.username,
+        "Zwei-Faktor eingeschaltet",
+        "",
+        "",
+    )
+    .await;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -353,7 +397,14 @@ async fn totp_disable(
         .bind(user.id)
         .execute(&state.db)
         .await?;
-    tracing::info!("Zwei-Faktor-Anmeldung für {} ausgeschaltet", user.username);
+    audit::admin_event(
+        &state.db,
+        &user.username,
+        "Zwei-Faktor ausgeschaltet",
+        "",
+        "",
+    )
+    .await;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -447,7 +498,14 @@ async fn create_user(
         None => (auth::random_password(), true),
     };
     let id = insert_user(&state.db, username, &display_name, &req.role, &password).await?;
-    tracing::info!("{} hat Benutzer {} angelegt", admin.username, username);
+    audit::admin_event(
+        &state.db,
+        &admin.username,
+        "Benutzer angelegt",
+        &format!("{username} ({})", req.role),
+        "",
+    )
+    .await;
     let user = fetch_user(&state, id).await?;
     Ok((
         StatusCode::CREATED,
@@ -532,7 +590,24 @@ async fn update_user(
         }
     }
     tx.commit().await?;
-    tracing::info!("{} hat Benutzer {} geändert", admin.username, user.username);
+    let mut changes = Vec::new();
+    if let Some(role) = &req.role {
+        changes.push(format!("Rolle {role}"));
+    }
+    if let Some(disabled) = req.disabled {
+        changes.push(if disabled { "gesperrt" } else { "entsperrt" }.to_owned());
+    }
+    if req.display_name.is_some() {
+        changes.push("Name".to_owned());
+    }
+    audit::admin_event(
+        &state.db,
+        &admin.username,
+        "Benutzer geändert",
+        &format!("{}: {}", user.username, changes.join(", ")),
+        "",
+    )
+    .await;
     Ok(Json(fetch_user(&state, id).await?))
 }
 
@@ -570,7 +645,14 @@ async fn delete_user(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
-    tracing::info!("{} hat Benutzer {} gelöscht", admin.username, user.username);
+    audit::admin_event(
+        &state.db,
+        &admin.username,
+        "Benutzer gelöscht",
+        &user.username,
+        "",
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -618,11 +700,14 @@ async fn reset_password(
         .execute(&state.db)
         .await?;
     revoke_sessions(&state, id).await?;
-    tracing::info!(
-        "{} hat das Passwort von {} zurückgesetzt",
-        admin.username,
-        user.username
-    );
+    audit::admin_event(
+        &state.db,
+        &admin.username,
+        "Passwort zurückgesetzt",
+        &user.username,
+        "",
+    )
+    .await;
     Ok(Json(json!({
         "password": if generated { Some(password) } else { None },
     })))
@@ -639,11 +724,14 @@ async fn reset_totp(
         .execute(&state.db)
         .await?;
     revoke_sessions(&state, id).await?;
-    tracing::info!(
-        "{} hat Zwei-Faktor für {} zurückgesetzt",
-        admin.username,
-        user.username
-    );
+    audit::admin_event(
+        &state.db,
+        &admin.username,
+        "Zwei-Faktor zurückgesetzt",
+        &user.username,
+        "",
+    )
+    .await;
     Ok(Json(fetch_user(&state, id).await?))
 }
 
@@ -746,7 +834,7 @@ struct UpdateDevice {
 
 async fn update_device(
     State(state): State<AppState>,
-    _: Admin,
+    Admin(admin): Admin,
     Path(id): Path<String>,
     Json(req): Json<UpdateDevice>,
 ) -> ApiResult<StatusCode> {
@@ -762,17 +850,26 @@ async fn update_device(
     .bind(note)
     .execute(&state.db)
     .await?;
+    audit::admin_event(&state.db, &admin.username, "Gerätenotiz geändert", &id, "").await;
     Ok(StatusCode::NO_CONTENT)
 }
 
 async fn delete_device(
     State(state): State<AppState>,
-    _: Admin,
+    Admin(admin): Admin,
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
     sqlx::query("delete from devices where id = ?")
         .bind(&id)
         .execute(&state.db)
         .await?;
+    audit::admin_event(
+        &state.db,
+        &admin.username,
+        "Gerät aus Liste entfernt",
+        &id,
+        "",
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
