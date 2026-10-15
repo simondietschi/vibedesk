@@ -9,9 +9,11 @@ sich gegenseitig aus:
 | `vibedesk-bin` | `vibedesk-bin/` | packt das fertige `.deb` aus dem Release um |
 
 Das Quellpaket braucht beim Bauen Internet: `prepare()` installiert mit rustup
-die Rust-Version, mit der der Client getestet ist, lädt die Rust-Crates und
-Dart-Pakete und baut `flutter_rust_bridge_codegen`. Flutter selbst ist als
-Quelle mit Prüfsumme eingetragen. Hardware-Video-Codecs (`hwcodec`) sind im
+die Rust-Version, mit der der Client getestet ist, und lädt die Rust-Crates und
+Dart-Pakete. Flutter selbst ist als Quelle mit Prüfsumme eingetragen. Der
+Quellcode-Tarball enthält den Code von `flutter_rust_bridge`, den der Job
+«bridge» erzeugt, weil `ffigen` mit dem aktuellen Clang von Arch falsche Typen
+erzeugt. Hardware-Video-Codecs (`hwcodec`) sind im
 Quellpaket nicht enthalten, weil sie ein eigenes FFmpeg aus vcpkg brauchen;
 VP8/VP9/AV1 kommen aus den Arch-Bibliotheken `libvpx` und `aom`.
 

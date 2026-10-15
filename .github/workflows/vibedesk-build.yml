@@ -288,6 +288,7 @@ jobs:
 
   arch-source:
     name: Arch-Quellpaket
+    needs: bridge
     if: github.event_name == 'push' || inputs.linux
     runs-on: ubuntu-22.04
     defaults:
@@ -304,9 +305,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bridge
+          path: client
+
       # AUR-fertiges PKGBUILD (vibedesk), das den Client aus dem Quellcode baut.
-      # Der Quellcode-Tarball kommt mit in den Release; makepkg nimmt ihn hier
-      # aus dem Ordner und prüft die eingesetzte Prüfsumme.
+      # Der Quellcode-Tarball enthält den Bridge-Code aus dem Job «bridge», denn
+      # ffigen erzeugt mit dem Clang von Arch falsche Typen. Er kommt mit in den
+      # Release; makepkg nimmt ihn hier aus dem Ordner und prüft die Prüfsumme.
       - name: AUR-PKGBUILD vibedesk aus dem Quellcode bauen und prüfen
         env:
           TAG: ${{ inputs.release_tag || github.ref_name }}
@@ -314,7 +321,14 @@ jobs:
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
           case "$TAG" in v*) tag="$TAG" ;; *) tag="v${version}" ;; esac
           src="vibedesk-${version}-src.tar.gz"
-          git -C .. archive --format=tar.gz --prefix="vibedesk-${version}/" -o "client/${src}" HEAD client
+          stage="$RUNNER_TEMP/src"
+          mkdir -p "$stage"
+          git -C .. archive --prefix="vibedesk-${version}/" HEAD client | tar -x -C "$stage"
+          for f in src/bridge_generated.rs src/bridge_generated.io.rs \
+                   flutter/lib/generated_bridge.dart flutter/lib/generated_bridge.freezed.dart; do
+            install -Dm644 "$f" "$stage/vibedesk-${version}/client/$f"
+          done
+          tar -czf "$src" -C "$stage" --sort=name --owner=0 --group=0 --numeric-owner "vibedesk-${version}"
           sum=$(sha256sum "$src" | cut -d' ' -f1)
           mkdir aur-src
           cp res/aur/vibedesk/PKGBUILD res/aur/vibedesk/vibedesk.install "$src" aur-src/
